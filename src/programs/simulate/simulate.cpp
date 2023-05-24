@@ -2122,12 +2122,19 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 #pragma omp parallel for num_threads(this->number_of_threads)
                         for ( long pixel_counter = 0; pixel_counter < distance_slab.real_memory_allocated; pixel_counter++ ) {
                             float current_weight = distance_slab.real_values[pixel_counter];
-                            if ( current_weight < DISTANCE_INIT ) {
-                                water_mask_slab.real_values[pixel_counter] = 1.0f;
+                            if ( current_weight > DISTANCE_INIT ) {
+                                if ( water_shell_only )
+                                    water_mask_slab.real_values[pixel_counter] = 0.0f;
+
+                                else
+                                    water_mask_slab.real_values[pixel_counter] = 1.0f;
                             }
                             else {
-                                current_weight                             = sqrtf(current_weight);
-                                water_mask_slab.real_values[pixel_counter] = return_hydration_weight(current_weight);
+                                current_weight = sqrtf(current_weight);
+                                if ( water_shell_only && current_weight > 4.0f )
+                                    water_mask_slab.real_values[pixel_counter] = return_hydration_weight_tapered(4.0, current_weight);
+                                else
+                                    water_mask_slab.real_values[pixel_counter] = return_hydration_weight(current_weight);
                             }
                         }
                     }
