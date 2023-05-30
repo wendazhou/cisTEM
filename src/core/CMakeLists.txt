@@ -75,6 +75,7 @@ target_link_libraries(cisTEM_core ${CMAKE_DL_LIBS})
 target_link_libraries(cisTEM_core ${FFTW_LIBRARIES})
 target_link_libraries(cisTEM_core ${wxWidgets_LIBRARIES})
 target_link_libraries(cisTEM_core ${TIFF_LIBRARIES})
+target_link_libraries(cisTEM_core ZLIB::ZLIB)
 
 target_link_libraries(cisTEM_gui_core ${wxWidgets_LIBRARIES})
 

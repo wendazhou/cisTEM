@@ -76,6 +76,9 @@ add_library(cisTEM_gui STATIC
     MatchTemplatePanel.cpp 
     MatchTemplateResultsPanel.cpp 
     RefineTemplatePanel.cpp
+	CombineRefinementPackagesWizard.cpp
+	AtomicCoordinatesAssetPanel.cpp
+	AtomicCoordinatesImportDialog.cpp
 )
 
 if (BUILD_EXPERIMENTAL_FEATURES)

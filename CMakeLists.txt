@@ -12,7 +12,7 @@ cmake_minimum_required(VERSION 3.11)
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_modules" ${CMAKE_MODULE_PATH})
 
 # specify the C++ standard
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Debug mode
@@ -144,6 +144,8 @@ message(wxWidgets libraries: ${wxWidgets_LIBRARIES})
 find_package(TIFF REQUIRED)
 include_directories(${TIFF_INCLUDE_DIRS})
 message("TIFF libraries: ${TIFF_LIBRARIES}")
+
+find_package(ZLIB REQUIRED)
 
 #
 # Let's figure out which SVN revision we are building (if indeed we're using SVN at all)
