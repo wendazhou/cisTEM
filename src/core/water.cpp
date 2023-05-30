@@ -1,5 +1,7 @@
 #include "core_headers.h"
 
+#include <mkl_vsl.h>
+
 const double SOLVENT_DENSITY = 0.94; // 0.94 +/- 0.02 Ghormley JA, Hochanadel CJ. 1971
 const double CARBON_DENSITY  = 1.75; // 2.0; // NIST and Holography paper TODO add cite (using the lower density to match the Holography paper)
 const double MW_WATER        = 18.01528;
@@ -134,8 +136,6 @@ void Water::SeedWaters3d( ) {
     long   n_waters_possible    = (long)floor(1.1 * n_waters_lower_bound); // maybe make this a real vector so it is extensible.
     // wxPrintf("specimen volume is %3.3e nm expecting %3.3e waters\n",(this->vol_angX * this->vol_angY * this->vol_angZ)/1000,n_waters_lower_bound);
 
-    RandomNumberGenerator my_rand(PIf);
-
     // FIXME is the multiplication by pixel size correct? I am not so sure.
     const float random_sigma_cutoff   = 1 - (n_waters_lower_bound / double((this->vol_nX - (this->size_neighborhood * this->pixel_size)) *
                                                                          (this->vol_nY - (this->size_neighborhood * this->pixel_size)) *
@@ -164,6 +164,13 @@ void Water::SeedWaters3d( ) {
     xUpper = this->vol_nX - this->size_neighborhood;
     yUpper = this->vol_nY - this->size_neighborhood;
 
+    VSLStreamStatePtr stream;
+    vslNewStream(&stream, VSL_BRNG_PHILOX4X32X10, std::random_device{ }( ));
+
+    std::vector<int> water_included(incX * incY * this->vol_nZ);
+
+    vslDeleteStream(&stream);
+
     for ( int i = 0; i < nThreads; i++ ) {
         iLower = i * incX + size_neighborhood;
         iUpper = (1 + i) * incX + size_neighborhood;
@@ -172,15 +179,16 @@ void Water::SeedWaters3d( ) {
             jUpper = (1 + j) * incY + size_neighborhood;
 
             //			for (int k = this->size_neighborhood; k < this->vol_nZ - this->size_neighborhood; k++)
-            for ( int k = 0; k < this->vol_nZ; k++ )
 
-            {
+            viRngBernoulli(VSL_RNG_METHOD_BERNOULLI_ICDF, stream, size_neighborhood * size_neighborhood * this->vol_nZ, water_included.data( ), 1 - random_sigma_cutoff);
+            std::size_t local_idx = 0;
+
+            for ( int k = 0; k < this->vol_nZ; k++ ) {
                 for ( int iInner = iLower; iInner < iUpper; iInner++ ) {
                     //					if (iInner > xUpper) { continue; }
                     for ( int jInner = jLower; jInner < jUpper; jInner++ ) {
                         //						if (jInner > yUpper) { continue; }
-
-                        if ( my_rand.GetUniformRandomSTD(0.0, 1.0) > random_sigma_cutoff ) {
+                        if ( water_included[local_idx++] ) {
 
                             water_coords[number_of_waters].x = (float)iInner;
                             water_coords[number_of_waters].y = (float)jInner;
@@ -210,11 +218,6 @@ void Water::ShakeWaters3d(int number_of_threads) {
 
     // wxPrintf("Using a rmsd of %f for water perturbation\n", random_sigma);
 
-    // Private variables for parfor loop
-    float dr, dx, dy, dz;
-    float azimuthal_angle = 0;
-    float polar_angle     = 0;
-
     // TODO benchmark this
     int local_threads;
     if ( number_of_threads > 4 ) {
@@ -226,73 +229,62 @@ void Water::ShakeWaters3d(int number_of_threads) {
 
     RandomNumberGenerator my_rand(local_threads);
 
-    if ( (float)number_of_waters < (powf(2, 31) - 1) / 3.0f ) {
-#pragma omp parallel for num_threads(local_threads) private(dr, dx, dy, dz, my_rand)
-        for ( long iWater = 0; iWater < number_of_waters; iWater++ ) {
+    static constexpr std::size_t block_size = 1024;
+    std::size_t                  num_blocks = (number_of_waters + block_size - 1) / block_size;
 
-            water_coords[iWater].x += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
-            water_coords[iWater].y += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
-            water_coords[iWater].z += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
+#pragma omp parallel
+    {
+        VSLStreamStatePtr stream;
 
-            // TODO 2x check that the periodic shifts are doing what they should be.
-            // Check boundaries
-            if ( water_coords[iWater].x < size_neighborhood + 1 ) {
-                water_coords[iWater].x = water_coords[iWater].x - 1 * size_neighborhood + vol_nX;
-            }
-            else if ( water_coords[iWater].x > vol_nX - size_neighborhood ) {
-                water_coords[iWater].x = water_coords[iWater].x - vol_nX + 1 * size_neighborhood;
-            }
+#ifdef _OPENMP
+        vslNewStream(&stream, VSL_BRNG_PHILOX4X32X10, omp_get_thread_num( ));
+#else
+        vslNewStream(&stream, VSL_BRNG_PHILOX4X32X10, 0);
+#endif
 
-            // Check boundaries
-            if ( water_coords[iWater].y < size_neighborhood + 1 ) {
-                water_coords[iWater].y = water_coords[iWater].y - 1 * size_neighborhood + vol_nY;
-            }
-            else if ( water_coords[iWater].y > vol_nY - size_neighborhood ) {
-                water_coords[iWater].y = water_coords[iWater].y - vol_nY + 1 * size_neighborhood;
-            }
+        float offsets[3 * block_size];
 
-            // Check boundaries
-            if ( water_coords[iWater].z < size_neighborhood + 1 ) {
-                water_coords[iWater].z = water_coords[iWater].z - 1 * size_neighborhood + vol_nZ;
-            }
-            else if ( water_coords[iWater].z > vol_nZ - size_neighborhood ) {
-                water_coords[iWater].z = water_coords[iWater].z - vol_nZ + 1 * size_neighborhood;
+#pragma omp for
+        for ( std::size_t iWaterBlock = 0; iWaterBlock < num_blocks; ++iWaterBlock ) {
+
+            vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_ICDF, stream, 3 * block_size, offsets, 0.0, random_sigma);
+
+            std::size_t block_start = iWaterBlock * block_size;
+            std::size_t block_end   = std::min(static_cast<std::size_t>(number_of_waters), block_start + block_size);
+
+            for ( std::size_t iWater = block_start; iWater < block_end; ++iWater ) {
+                water_coords[iWater].x += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
+                water_coords[iWater].y += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
+                water_coords[iWater].z += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
+
+                // TODO 2x check that the periodic shifts are doing what they should be.
+                // Check boundaries
+                if ( water_coords[iWater].x < size_neighborhood + 1 ) {
+                    water_coords[iWater].x = water_coords[iWater].x - 1 * size_neighborhood + vol_nX;
+                }
+                else if ( water_coords[iWater].x > vol_nX - size_neighborhood ) {
+                    water_coords[iWater].x = water_coords[iWater].x - vol_nX + 1 * size_neighborhood;
+                }
+
+                // Check boundaries
+                if ( water_coords[iWater].y < size_neighborhood + 1 ) {
+                    water_coords[iWater].y = water_coords[iWater].y - 1 * size_neighborhood + vol_nY;
+                }
+                else if ( water_coords[iWater].y > vol_nY - size_neighborhood ) {
+                    water_coords[iWater].y = water_coords[iWater].y - vol_nY + 1 * size_neighborhood;
+                }
+
+                // Check boundaries
+                if ( water_coords[iWater].z < size_neighborhood + 1 ) {
+                    water_coords[iWater].z = water_coords[iWater].z - 1 * size_neighborhood + vol_nZ;
+                }
+                else if ( water_coords[iWater].z > vol_nZ - size_neighborhood ) {
+                    water_coords[iWater].z = water_coords[iWater].z - vol_nZ + 1 * size_neighborhood;
+                }
             }
         }
-    }
-    else {
-#pragma omp parallel for num_threads(local_threads) private(dr, dx, dy, dz, my_rand)
-        for ( long iWater = 0; iWater < number_of_waters; iWater++ ) {
 
-            water_coords[iWater].x += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
-            water_coords[iWater].y += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
-            water_coords[iWater].z += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
-
-            // TODO 2x check that the periodic shifts are doing what they should be.
-            // Check boundaries
-            if ( water_coords[iWater].x < size_neighborhood + 1 ) {
-                water_coords[iWater].x = water_coords[iWater].x - 1 * size_neighborhood + vol_nX;
-            }
-            else if ( water_coords[iWater].x > vol_nX - size_neighborhood ) {
-                water_coords[iWater].x = water_coords[iWater].x - vol_nX + 1 * size_neighborhood;
-            }
-
-            // Check boundaries
-            if ( water_coords[iWater].y < size_neighborhood + 1 ) {
-                water_coords[iWater].y = water_coords[iWater].y - 1 * size_neighborhood + vol_nY;
-            }
-            else if ( water_coords[iWater].y > vol_nY - size_neighborhood ) {
-                water_coords[iWater].y = water_coords[iWater].y - vol_nY + 1 * size_neighborhood;
-            }
-
-            // Check boundaries
-            if ( water_coords[iWater].z < size_neighborhood + 1 ) {
-                water_coords[iWater].z = water_coords[iWater].z - 1 * size_neighborhood + vol_nZ;
-            }
-            else if ( water_coords[iWater].z > vol_nZ - size_neighborhood ) {
-                water_coords[iWater].z = water_coords[iWater].z - vol_nZ + 1 * size_neighborhood;
-            }
-        }
+        vslDeleteStream(&stream);
     }
 }
 

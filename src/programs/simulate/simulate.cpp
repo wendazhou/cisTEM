@@ -528,7 +528,7 @@ class SimulateApp : public MyApp {
         return (this->min_bFactor + pdb_bfactor * this->bFactor_scaling);
     }
 
-    inline float return_scattering_potential(corners& R, float* bPlusB, AtomType& atom_id) {
+    inline float return_scattering_potential(corners const& R, float* bPlusB, AtomType& atom_id) {
 
         float temp_potential = 0.0f;
         float t0;
@@ -3219,14 +3219,14 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
                             //                            continue;
                             //                        }
                             if ( iSubPixLinearIndex >= 0 && iSubPixLinearIndex <= SUB_PIXEL_NeL - 1 ) {
-                                if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-                                    timer.start("omp");
+                                //if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
+                                //    timer.start("omp");
 
 #pragma omp atomic update
                                 projected_water_atoms.real_values[projected_water_atoms.ReturnReal1DAddressFromPhysicalCoord(indX, indY, 0)] +=
                                         (current_weight * this->projected_water[iSubPixLinearIndex].ReturnRealPixelFromPhysicalCoord(sx, sy, 0)); // TODO could I land out of bounds?] += projected_water_atoms[iSubPixLinearIndex].real_values[iWater];
-                                if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-                                    timer.lap("omp");
+                                //if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
+                                //    timer.lap("omp");
                             }
 
                             //                        wxPrintf("Current Water %3.3e\n",current_weight*this->projected_water[iSubPixLinearIndex].real_values[this->projected_water[iSubPixLinearIndex].ReturnReal1DAddressFromPhysicalCoord(sx,sy,0)]);

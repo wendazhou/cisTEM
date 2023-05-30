@@ -40,7 +40,7 @@ StopWatch::~StopWatch( ) {
     // Do nothing;
 }
 
-void StopWatch::record_start(std::string name) {
+void StopWatch::record_start(std::string const& name) {
     if ( is_new ) {
         event_names.push_back(name);
         current_index = event_names.size( ) - 1;
@@ -149,7 +149,7 @@ void StopWatch::lap(std::string name, bool threadsafe) {
     record_measured( );
 }
 
-void StopWatch::check_for_name_and_set_current_idx(std::string name) {
+void StopWatch::check_for_name_and_set_current_idx(std::string const& name) {
     // Either add to an existing event, or create a new one.
     for ( size_t iName = 0; iName < event_names.size( ); iName++ ) {
         if ( event_names[iName] == name ) {

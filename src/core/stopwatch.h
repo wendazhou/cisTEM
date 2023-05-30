@@ -77,9 +77,9 @@ class StopWatch {
     void convert_time(uint64_t microsec);
 
     // Check to see if an event named "name" already exists, if not, initialize it.
-    void check_for_name_and_set_current_idx(std::string name);
+    void check_for_name_and_set_current_idx(std::string const& name);
 
-    void record_start(std::string name);
+    void record_start(std::string const& name);
     void record_end( );
     void record_elapsed( );
     void record_measured( );
