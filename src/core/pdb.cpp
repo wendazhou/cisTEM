@@ -708,7 +708,6 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
 
     for ( current_pdb = 0; current_pdb < number_of_pdbs; current_pdb++ ) {
         wxPrintf("Checking %ld %ld\n", pdb_ensemble[current_pdb].my_atoms.GetCount( ), my_atoms.GetCount( ));
-        wxPrintf("Check: is it using starfile: %d\n", pdb_ensemble[current_pdb].use_star_file);
 
         for ( current_particle = 0; current_particle < pdb_ensemble[current_pdb].number_of_particles_initialized; current_particle++ ) {
             ox = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][0];
@@ -908,7 +907,6 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
                     }
                 }
 
-                wxPrintf("Local transform: applying rotmat");
                 for ( current_atom = 0; current_atom < pdb_ensemble[current_pdb].number_of_atoms; current_atom++ ) {
                     if ( my_atoms.Item(current_atom).is_real_particle ) {
 

@@ -253,10 +253,11 @@ void Water::ShakeWaters3d(int number_of_threads) {
             std::size_t block_start = iWaterBlock * block_size;
             std::size_t block_end   = std::min(static_cast<std::size_t>(number_of_waters), block_start + block_size);
 
-            for ( std::size_t iWater = block_start; iWater < block_end; ++iWater ) {
-                water_coords[iWater].x += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
-                water_coords[iWater].y += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
-                water_coords[iWater].z += my_rand.GetNormalRandomSTD(0.0f, random_sigma);
+            for ( std::size_t i = 0; i < block_size; ++i ) {
+                std::size_t iWater = block_start + i;
+                water_coords[iWater].x += offsets[3 * i];
+                water_coords[iWater].y += offsets[3 * i + 1];
+                water_coords[iWater].z += offsets[3 * i + 2];
 
                 // TODO 2x check that the periodic shifts are doing what they should be.
                 // Check boundaries

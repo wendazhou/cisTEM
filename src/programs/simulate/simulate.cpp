@@ -3170,11 +3170,13 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
 
     //    timer.lap("water_pre");
 
-    long n_waters_ignored = 0;
+    float slab_min_z = (float)slabIDX_start[iSlab];
+    float slab_max_z = (float)slabIDX_end[iSlab] + 1;
+
 #pragma omp parallel for num_threads(this->number_of_threads)                                                                                                        \
         schedule(static, water_box->number_of_waters / number_of_threads) private(radius, ix, iy, iz, dx, dy, dz, x1, y1, z1, indX, indY, indZ, int_x, int_y, int_z, \
                                                                                           sx, sy, iSubPixX, iSubPixY, iSubPixZ, iSubPixLinearIndex,                  \
-                                                                                          n_waters_ignored, current_weight, current_distance, current_potential)
+                                                                                          current_weight, current_distance, current_potential)
 
     for ( int current_atom = 0; current_atom < water_box->number_of_waters; current_atom++ ) {
 
@@ -3182,9 +3184,16 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
 
         rotate_waters.RotateCoords(dx, dy, dz, ix, iy, iz);
         // The broadest contition for exclusion is being outside the slab, so calculate that first to avoid redundant calcs.
+        // We short-circuit a lot of float-to-int computation here which are time consuming
+
+        float z_pos = iz + rotated_oZ + pixel_offset;
+        if (z_pos <= slab_min_z || z_pos > slab_max_z) {
+            continue;
+        }
+
         z1    = iz + (rotated_oZ - slabIDX_start[iSlab]);
         dz    = modff(iz + rotated_oZ + pixel_offset, &iz) - pixel_offset;
-        int_z = myroundint(iz);
+        int_z = (int)iz;
 
         //        if ( int_z >= slabIDX_start[iSlab] && int_z  <= slabIDX_end[iSlab])
         if ( int_z >= slabIDX_start[iSlab] && int_z <= slabIDX_end[iSlab] ) {
@@ -3202,8 +3211,8 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
             dy = modff(iy + scattering_slab->logical_y_dimension / 2 + pixel_offset, &iy) - pixel_offset;
 
             // Convert these once to avoid type conversion in every loop
-            int_x = myroundint(ix);
-            int_y = myroundint(iy);
+            int_x = static_cast<int>(ix);
+            int_y = static_cast<int>(iy);
 
             if ( int_x - 1 > 0 && int_y - 1 > 0 && int_x - 1 < scattering_slab->logical_x_dimension && int_y - 1 < scattering_slab->logical_y_dimension ) {
 
@@ -3218,9 +3227,6 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
 
                 iSubPixLinearIndex = int(water_edge * water_edge * iSubPixZ) + int(water_edge * iSubPixY) + (int)iSubPixX;
 
-                if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-                    timer.start("w_weight");
-
                 current_potential = scattering_slab->ReturnRealPixelFromPhysicalCoord(int_x - 1, int_y - 1, int_z - slabIDX_start[iSlab]);
                 current_distance  = distance_slab->ReturnRealPixelFromPhysicalCoord(int_x - 1, int_y - 1, int_z - slabIDX_start[iSlab]);
 
@@ -3229,7 +3235,8 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
                     current_weight = 1;
                 }
                 else {
-                    if ( current_distance < DISTANCE_INIT ) {
+                    // cutoff weight at 10 A.
+                    if ( current_distance < 10 * 10 ) {
 
                         current_distance = sqrtf(current_distance);
                         current_weight   = return_hydration_weight(current_distance);
@@ -3239,10 +3246,6 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
                         current_weight = 1.0f;
                     }
                 }
-
-                //            wxPrintf("This water scale is %3.3f\n",current_weight);
-                if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-                    timer.start("w_neigh");
 
                 for ( sy = 0; sy < upper_bound; sy++ ) {
                     indY = int_y - upper_bound + sy + size_neighborhood_water + 1;
