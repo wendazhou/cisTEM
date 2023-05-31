@@ -1,6 +1,8 @@
 //BEGIN_FOR_STAND_ALONE_CTFFIND
 #include "core_headers.h"
 
+#include <mkl_vml.h>
+
 using namespace cistem;
 
 wxMutex Image::s_mutexProtectingFFTW;
@@ -4283,9 +4285,7 @@ Image& Image::operator=(const Image* other_image) {
         is_in_real_space         = other_image->is_in_real_space;
         object_is_centred_in_box = other_image->object_is_centred_in_box;
 
-        for ( long pixel_counter = 0; pixel_counter < real_memory_allocated; pixel_counter++ ) {
-            real_values[pixel_counter] = other_image->real_values[pixel_counter];
-        }
+        std::memcpy(real_values, other_image->real_values, sizeof(float) * real_memory_allocated);
     }
 
     return *this;
@@ -8345,16 +8345,69 @@ void Image::ApplyCTFPhaseFlip(CTF ctf_to_apply) {
     }
 }
 
-void Image::ApplyCTF(CTF ctf_to_apply, bool absolute, bool apply_beam_tilt, bool apply_envelope) {
+void Image::ApplyCTF(CTF const& ctf_to_apply, bool absolute, bool apply_beam_tilt, bool apply_envelope) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == false, "image not in Fourier space");
     MyDebugAssertTrue(logical_z_dimension == 1, "Volumes not supported");
 
-    int j;
-    int i;
-
     long pixel_counter = 0;
 
+#if defined(MKL)
+    std::size_t batch = physical_upper_bound_complex_x + 1;
+
+    float* y_coord           = static_cast<float*>(mkl_malloc(sizeof(float) * batch, 64));
+    float* x_coord           = static_cast<float*>(mkl_malloc(sizeof(float) * batch, 64));
+    float* azimuth           = static_cast<float*>(mkl_malloc(sizeof(float) * batch, 64));
+    float* frequency_squared = static_cast<float*>(mkl_malloc(sizeof(float) * batch, 64));
+    float* buffer            = static_cast<float*>(mkl_malloc(sizeof(float) * batch, 64));
+    float* ctf_value         = static_cast<float*>(mkl_malloc(sizeof(float) * batch, 64));
+
+    for ( int j = 0; j <= physical_upper_bound_complex_y; ++j ) {
+        float y_coord_single = ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * fourier_voxel_size_y;
+
+        std::fill_n(y_coord, batch, y_coord_single);
+        for ( int i = 0; i < batch; ++i ) {
+            float x_coord_single = i * fourier_voxel_size_x;
+            x_coord[i]           = x_coord_single;
+            frequency_squared[i] = x_coord_single * x_coord_single + y_coord_single * y_coord_single;
+        }
+
+        // Compute the azimuth
+        vmsAtan2(physical_upper_bound_complex_x, y_coord, x_coord, azimuth, VML_LA);
+
+        if ( apply_envelope ) {
+            ctf_to_apply.EvaluateWithEnvelope(batch, ctf_value, frequency_squared, azimuth, buffer);
+        }
+        else {
+            ctf_to_apply.Evaluate(batch, ctf_value, frequency_squared, azimuth, buffer);
+        }
+
+        if ( absolute ) {
+            for ( std::size_t i = 0; i < batch; ++i ) {
+                complex_values[pixel_counter + i] *= std::abs(ctf_value[i]);
+            }
+        }
+        else {
+            for ( std::size_t i = 0; i < batch; ++i ) {
+                complex_values[pixel_counter + i] *= ctf_value[i];
+            }
+        }
+
+        if ( apply_beam_tilt && (ctf_to_apply.GetBeamTiltX( ) != 0.0f || ctf_to_apply.GetBeamTiltY( ) != 0.0f) ) {
+            // TODO: implement beam tilt in fast path
+            std::abort();
+        }
+
+        pixel_counter += batch;
+    }
+
+    mkl_free(y_coord);
+    mkl_free(x_coord);
+    mkl_free(azimuth);
+    mkl_free(frequency_squared);
+    mkl_free(buffer);
+    mkl_free(ctf_value);
+#else
     float y_coord_sq;
     float x_coord_sq;
 
@@ -8365,11 +8418,11 @@ void Image::ApplyCTF(CTF ctf_to_apply, bool absolute, bool apply_beam_tilt, bool
     float azimuth;
     float ctf_value;
 
-    for ( j = 0; j <= physical_upper_bound_complex_y; j++ ) {
+    for ( int j = 0; j <= physical_upper_bound_complex_y; j++ ) {
         y_coord    = ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * fourier_voxel_size_y;
         y_coord_sq = powf(y_coord, 2.0);
 
-        for ( i = 0; i <= physical_upper_bound_complex_x; i++ ) {
+        for ( int i = 0; i <= physical_upper_bound_complex_x; i++ ) {
             x_coord    = i * fourier_voxel_size_x;
             x_coord_sq = powf(x_coord, 2);
 
@@ -8402,6 +8455,9 @@ void Image::ApplyCTF(CTF ctf_to_apply, bool absolute, bool apply_beam_tilt, bool
             pixel_counter++;
         }
     }
+
+#endif
+
     //	Image temp_image;
     //	temp_image.Allocate(logical_x_dimension, logical_y_dimension, false);
     //	ComputeAmplitudeSpectrumFull2D(&temp_image, true);

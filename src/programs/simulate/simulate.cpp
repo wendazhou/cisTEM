@@ -3,6 +3,8 @@
 #include "scattering_potential.h"
 #include "wave_function_propagator.h"
 
+#include <mkl_vml.h>
+
 #ifdef ENABLE_GEMMI
 const bool GEMMI_ENABLED = true;
 #else
@@ -539,6 +541,49 @@ class SimulateApp : public MyApp {
         t2 = R.y1 * R.y2 < 0 ? false : true;
         t3 = R.z1 * R.z2 < 0 ? false : true;
 
+#if defined(MKL)
+        // 5 gaussians, 3 coords, 2 terms
+        alignas(64) float gaussian_norm_coords[5 * 3 * 2];
+
+        for ( int iGaussian = 0; iGaussian < 5; iGaussian++ ) {
+            gaussian_norm_coords[iGaussian * 6 + 0] = R.x1 * bPlusB[iGaussian];
+            gaussian_norm_coords[iGaussian * 6 + 1] = R.x2 * bPlusB[iGaussian];
+            gaussian_norm_coords[iGaussian * 6 + 2] = R.y1 * bPlusB[iGaussian];
+            gaussian_norm_coords[iGaussian * 6 + 3] = R.y2 * bPlusB[iGaussian];
+            gaussian_norm_coords[iGaussian * 6 + 4] = R.z1 * bPlusB[iGaussian];
+            gaussian_norm_coords[iGaussian * 6 + 5] = R.z2 * bPlusB[iGaussian];
+        }
+
+        // Evaluate the error function on all gaussians
+        vmsErf(5 * 3 * 2, gaussian_norm_coords, gaussian_norm_coords, VML_LA);
+
+        // Create temporary array of signs
+        bool t_values[] = {
+            t1, t2, t3
+        };
+
+        for ( int iGaussian = 0; iGaussian < 5; iGaussian++ ) {
+            float t = 1.0f;
+
+            for ( int i = 0; i < 3; ++i ) {
+                float v;
+
+                float left_side  = gaussian_norm_coords[iGaussian * 6 + i * 2 + 0];
+                float right_side = gaussian_norm_coords[iGaussian * 6 + i * 2 + 1];
+
+                if (t_values[i]) {
+                    v = right_side - left_side;
+                }
+                else {
+                    v = std::abs(left_side) + std::abs(right_side);
+                }
+
+                t *= v;
+            }
+
+            temp_potential += std::abs(t) * sp.ReturnScatteringParamtersA(atom_id, iGaussian);
+        }
+#else
         for ( int iGaussian = 0; iGaussian < 5; iGaussian++ ) {
 
             t0 = (t1) ? erff(bPlusB[iGaussian] * R.x2) - erff(bPlusB[iGaussian] * R.x1) : fabsf(erff(bPlusB[iGaussian] * R.x2)) + fabsf(erff(bPlusB[iGaussian] * R.x1));
@@ -548,6 +593,7 @@ class SimulateApp : public MyApp {
             temp_potential += sp.ReturnScatteringParamtersA(atom_id, iGaussian) * fabsf(t0);
 
         } // loop over gaussian fits
+#endif
 
         return temp_potential *= this->lead_term;
     };
@@ -2373,18 +2419,11 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                     is_image_loop = false; // makes logical conditions easier for me to follow. BAH
 
                 timer.start("Propagate WaveFunc");
+                wxPrintf("Propagating wave function\n");
 
-                if ( iFrame == 0 && is_image_loop ) {
-                    // Measuring the amplitude contrast is expensive as the wave propagation has to be done twice, along with  multiple CTF fits, which include disk writes. Only do on the first frame.
-                    amplitude_contrast = wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean, inelastic_mean, propagator_distance, true, tilt_to_scale_search_range);
-                    if ( DO_PRINT ) {
-                        wxPrintf("\nFound an amplitude contrast of %3.6f\n\n", amplitude_contrast);
-                    }
-                }
-                else {
-                    wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean, inelastic_mean, propagator_distance, false, tilt_to_scale_search_range);
-                }
+                wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean, inelastic_mean, propagator_distance, false, tilt_to_scale_search_range);
 
+                wxPrintf("Done with wave function propagation\n");
                 timer.lap("Propagate WaveFunc");
                 if ( SAVE_PROBABILITY_WAVE && iLoop < 1 ) {
                     std::string fileNameOUT = "withProbabilityWave_" + std::to_string(iFrame) + this->output_filename;
@@ -2846,10 +2885,10 @@ void SimulateApp::calc_scattering_potential(const PDB*     current_specimen,
 
     float bPlusB[5];
 // TODO experiment with the scheduling. Until the specimen is consistently full, many consecutive slabs may have very little work for the assigned threads to handle.
-#pragma omp parallel for num_threads(this->number_of_threads) private(                                                 \
-        atom_id, bFactor, bPlusB, radius, ix, iy, iz, x1, x2, y1, y2, z1, z2, indX, indY,                              \
-        indZ, sx, sy, sz, dx, dy, dz, xDistSq, yDistSq, zDistSq, iLim, jLim, kLim, iGaussian, element_inelastic_ratio, \
-        water_offset, atoms_values_tmp, atoms_added_idx, atoms_distances_tmp, n_atoms_added, pixel_offset, bfX, bfY, bfZ)
+#pragma omp parallel for num_threads(this->number_of_threads) private(                                                                 \
+                atom_id, bFactor, bPlusB, radius, ix, iy, iz, x1, x2, y1, y2, z1, z2, indX, indY,                                      \
+                        indZ, sx, sy, sz, dx, dy, dz, xDistSq, yDistSq, zDistSq, iLim, jLim, kLim, iGaussian, element_inelastic_ratio, \
+                        water_offset, atoms_values_tmp, atoms_added_idx, atoms_distances_tmp, n_atoms_added, pixel_offset, bfX, bfY, bfZ)
     for ( long current_atom = 0; current_atom < this->number_of_non_water_atoms; current_atom++ ) {
 
         n_atoms_added = 0;
@@ -3134,8 +3173,8 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
     long n_waters_ignored = 0;
 #pragma omp parallel for num_threads(this->number_of_threads)                                                                                                        \
         schedule(static, water_box->number_of_waters / number_of_threads) private(radius, ix, iy, iz, dx, dy, dz, x1, y1, z1, indX, indY, indZ, int_x, int_y, int_z, \
-                                                                                  sx, sy, iSubPixX, iSubPixY, iSubPixZ, iSubPixLinearIndex,                          \
-                                                                                  n_waters_ignored, current_weight, current_distance, current_potential)
+                                                                                          sx, sy, iSubPixX, iSubPixY, iSubPixZ, iSubPixLinearIndex,                  \
+                                                                                          n_waters_ignored, current_weight, current_distance, current_potential)
 
     for ( int current_atom = 0; current_atom < water_box->number_of_waters; current_atom++ ) {
 

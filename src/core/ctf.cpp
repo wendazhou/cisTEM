@@ -1,5 +1,9 @@
 #include "core_headers.h"
 
+#ifdef MKL
+#include <mkl_vml.h>
+#endif
+
 CTF::CTF( ) {
     spherical_aberration   = 0;
     wavelength             = 0;
@@ -148,7 +152,7 @@ void CTF::Init(float wanted_acceleration_voltage_in_kV, // keV
 /*
  * Eqn 11 of Rohou & Grigorieff, modified by corrigendum of October 2018
  */
-int CTF::ReturnNumberOfExtremaBeforeSquaredSpatialFrequency(float squared_spatial_frequency, float azimuth) {
+int CTF::ReturnNumberOfExtremaBeforeSquaredSpatialFrequency(float squared_spatial_frequency, float azimuth) const {
 
     int   number_of_extrema                     = 0;
     int   number_of_extrema_before_chi_extremum = 0;
@@ -173,7 +177,7 @@ int CTF::ReturnNumberOfExtremaBeforeSquaredSpatialFrequency(float squared_spatia
 /*
  * Compute the frequency of the Nth zero of the CTF.
  */
-float CTF::ReturnSquaredSpatialFrequencyOfAZero(int which_zero, float azimuth, bool inaccurate_is_ok) {
+float CTF::ReturnSquaredSpatialFrequencyOfAZero(int which_zero, float azimuth, bool inaccurate_is_ok) const {
     /*
 	 * The method used below (ReturnSquaredSpatialFrequencyGivenPhaseShiftAndAzimuth) makes assumptions which mean it will
 	 * only return the correct spatial frequency for the CTF zeroes between the origin and the frequency at which
@@ -197,25 +201,25 @@ float CTF::ReturnSquaredSpatialFrequencyOfAZero(int which_zero, float azimuth, b
 /*
  * Return the maximum phase aberration anywhere on the spectrum
  */
-float CTF::ReturnPhaseAberrationMaximum( ) {
+float CTF::ReturnPhaseAberrationMaximum( ) const {
     return std::max(ReturnPhaseAberrationMaximumGivenDefocus(defocus_1), ReturnPhaseAberrationMaximumGivenDefocus(defocus_2));
 }
 
-float CTF::ReturnPhaseAberrationMaximumGivenDefocus(float defocus) {
+float CTF::ReturnPhaseAberrationMaximumGivenDefocus(float defocus) const {
     return PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(defocus), defocus);
 }
 
 /*
  * Return the squared spatial frequency at which the phase aberration function reaches its extremum
  */
-float CTF::ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenAzimuth(float azimuth) {
+float CTF::ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenAzimuth(float azimuth) const {
     return ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(DefocusGivenAzimuth(azimuth));
 }
 
 /*
  * Return the squared spatial frequency at which the phase aberration function reaches its extremum
  */
-float CTF::ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(float defocus) {
+float CTF::ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(float defocus) const {
     if ( defocus <= 0.0 ) {
         /*
 		 * When the defocus value is negative (i.e. we are overfocus), the phase aberration
@@ -233,6 +237,22 @@ float CTF::ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(float d
     }
 }
 
+void CTF::ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(std::size_t n, float* output, float const* defocus) const {
+    if ( spherical_aberration == 0.0 ) {
+        std::fill_n(output, n, 9999.999);
+        return;
+    }
+
+    for ( std::size_t i = 0; i < n; i++ ) {
+        if ( defocus[i] <= 0.0 ) {
+            output[i] = 0.0;
+        }
+        else {
+            output[i] /= (squared_wavelength * spherical_aberration);
+        }
+    }
+}
+
 /*
  * Return the squared spatial frequency at which a given phase aberration is obtained. Note that this will return only one of the
  * spatial frequencies, whereas the phase aberration function is a quadratic polynomial function of the squared
@@ -242,7 +262,7 @@ float CTF::ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(float d
  *
  * TODO: take into account multiple solutions
  */
-float CTF::ReturnSquaredSpatialFrequencyGivenPhaseShiftAndAzimuth(float phase_shift, float azimuth) {
+float CTF::ReturnSquaredSpatialFrequencyGivenPhaseShiftAndAzimuth(float phase_shift, float azimuth) const {
     const float a   = -0.5 * PI * cubed_wavelength * spherical_aberration;
     const float b   = PI * wavelength * DefocusGivenAzimuth(azimuth);
     const float c   = additional_phase_shift + precomputed_amplitude_contrast_term;
@@ -389,7 +409,7 @@ void CTF::SetSampleThickness(float wanted_sample_thickness_in_pixels) {
 }
 
 // Return the value of the CTF at the given squared spatial frequency and azimuth
-std::complex<float> CTF::EvaluateComplex(float squared_spatial_frequency, float azimuth) {
+std::complex<float> CTF::EvaluateComplex(float squared_spatial_frequency, float azimuth) const {
     float phase_aberration = PhaseShiftGivenSquaredSpatialFrequencyAndAzimuth(squared_spatial_frequency, azimuth);
     return -sinf(phase_aberration) - I * cosf(phase_aberration);
 
@@ -402,7 +422,7 @@ std::complex<float> CTF::EvaluateComplex(float squared_spatial_frequency, float 
 }
 
 // Return the value of the CTF at the given squared spatial frequency and azimuth
-float CTF::Evaluate(float squared_spatial_frequency, float azimuth) {
+float CTF::Evaluate(float squared_spatial_frequency, float azimuth) const {
     if ( defocus_1 == 0.0f && defocus_2 == 0.0f )
         return -0.7; // for defocus sweep
     else {
@@ -420,17 +440,51 @@ float CTF::Evaluate(float squared_spatial_frequency, float azimuth) {
     }
 }
 
+void CTF::Evaluate(std::size_t n, float* output, float const* squared_spatial_frequencies, float const* azimuths, float* buffer) const {
+    if ( defocus_1 == 0.0f && defocus_2 == 0.0f ) {
+        std::fill_n(output, n, -0.7f);
+        return;
+    }
+
+    // Compute defocus in buffer
+    this->DefocusGivenAzimuth(n, buffer, azimuths);
+
+    if ( low_resolution_contrast == 0.0f ) {
+        this->PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(n, output, squared_spatial_frequencies, buffer);
+        vmsSin(n, output, output, VML_LA | VML_FTZDAZ_OFF);
+        for ( std::size_t i = 0; i < n; i++ ) {
+            output[i] = -output[i];
+        }
+        return;
+    }
+
+    // Compute phase shift in output
+    this->PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(n, output, squared_spatial_frequencies, buffer);
+    // Compute low res limit in buffer (overwrites defocus)
+    this->ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(n, buffer, buffer);
+
+    float threshold = PI / 2.0f;
+
+    for ( std::size_t i = 0; i < n; ++i ) {
+        // Apply phase shift if necessary
+        // Note: we also shift by PI to avoid the need to negate the output after the sin
+        output[i] = output[i] + (output[i] >= threshold) * low_resolution_contrast * (threshold - output[i]) / threshold + PIf;
+    }
+
+    vmsSin(n, output, output, VML_LA | VML_FTZDAZ_OFF);
+}
+
 // Return the value of the powerspectrum at the given squared spatial frequency and azimuth taken into account the sample thickness
 // Formulas according to "TEM bright field imaging of thick specimens: nodes in
 // Thon ring patterns" by Tichelaar, et.al. who got it from McMullan et al. (2015)
 
-float CTF::EvaluatePowerspectrumWithThickness(float squared_spatial_frequency, float azimuth) {
+float CTF::EvaluatePowerspectrumWithThickness(float squared_spatial_frequency, float azimuth) const {
     float phase_aberration = PhaseShiftGivenSquaredSpatialFrequencyAndAzimuth(squared_spatial_frequency, azimuth);
     return 0.5f * (1 - IntegratedDefocusModulation(squared_spatial_frequency) * cosf(2 * phase_aberration));
 }
 
 // Return the value of the CTF at the given squared spatial frequency and azimuth
-float CTF::EvaluateWithEnvelope(float squared_spatial_frequency, float azimuth) {
+float CTF::EvaluateWithEnvelope(float squared_spatial_frequency, float azimuth) const {
 
     // Check that things are set
     if ( this->squared_energy_half_width == -1 || this->squared_illumination_aperture == -1 ) {
@@ -449,6 +503,33 @@ float CTF::EvaluateWithEnvelope(float squared_spatial_frequency, float azimuth) 
     return -sinf(PhaseShiftGivenSquaredSpatialFrequencyAndAzimuth(squared_spatial_frequency, azimuth)) * envelope_term;
 }
 
+void CTF::EvaluateWithEnvelope(std::size_t n, float* output, float const* squared_spatial_frequency, float const* azimuth, float* buffer) const {
+    float c1 = -0.5f * PISQf;
+    float c2 = 2 * PISQf * squared_illumination_aperture * squared_energy_half_width;
+    float c3 = squared_wavelength * squared_energy_half_width;
+    float c4 = 2.0f * squared_illumination_aperture;
+
+    // Put envelope term in buffer
+    for (std::size_t i = 0; i < n; ++i) {
+        float ssf = squared_spatial_frequency[i];
+        float common_term = c1 * ssf / (1 + c2 * ssf);
+
+        float a = spherical_aberration * squared_wavelength * ssf - 0.5f * (defocus_1 + defocus_2);
+        float a2 = a * a;
+
+        buffer[i] = common_term * (c3 * ssf + c4 * a2);
+    }
+    vmsExp(n, buffer, buffer, VML_LA | VML_FTZDAZ_OFF);
+
+    DefocusGivenAzimuth(n, output, azimuth);
+    PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(n, output, squared_spatial_frequency, output);
+    vmsSin(n, output, output, VML_LA | VML_FTZDAZ_OFF);
+
+    for (std::size_t i = 0; i < n; ++i) {
+        output[i] = -output[i] * buffer[i];
+    }
+}
+
 /* returns the argument (radians) to the sine and cosine terms of the ctf
 We follow the convention that underfocusing the objective lens
 gives rise to a positive phase shift of scattered electrons, whereas the spherical aberration gives a
@@ -456,15 +537,25 @@ negative phase shift of scattered electrons.
 Note that there is an additional (precomputed) term so that the CTF can then be computed by simply
 taking the sine of the returned phase shift.
 */
-float CTF::PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(float squared_spatial_frequency, float defocus) {
+float CTF::PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(float squared_spatial_frequency, float defocus) const {
     return PIf * wavelength * squared_spatial_frequency * (defocus - 0.5f * squared_wavelength * squared_spatial_frequency * spherical_aberration) + additional_phase_shift + precomputed_amplitude_contrast_term;
 }
 
-float CTF::PhaseShiftGivenSquaredSpatialFrequencyAndAzimuth(float squared_spatial_frequency, float azimuth) {
+float CTF::PhaseShiftGivenSquaredSpatialFrequencyAndAzimuth(float squared_spatial_frequency, float azimuth) const {
     return PIf * wavelength * squared_spatial_frequency * (DefocusGivenAzimuth(azimuth) - 0.5f * squared_wavelength * squared_spatial_frequency * spherical_aberration) + additional_phase_shift + precomputed_amplitude_contrast_term;
 }
 
-std::complex<float> CTF::EvaluateBeamTiltPhaseShift(float squared_spatial_frequency, float azimuth) {
+void CTF::PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(std::size_t n, float* output, float const* squared_spatial_frequency, float const* defocus) const {
+    float c1 = PIf * wavelength;
+    float c2 = 0.5f * squared_wavelength * spherical_aberration;
+    float c3 = additional_phase_shift + precomputed_amplitude_contrast_term;
+
+    for ( std::size_t i = 0; i < n; i++ ) {
+        output[i] = c1 * squared_spatial_frequency[i] * (defocus[i] - c2 * squared_spatial_frequency[i]) + c3;
+    }
+}
+
+std::complex<float> CTF::EvaluateBeamTiltPhaseShift(float squared_spatial_frequency, float azimuth) const {
     MyDebugAssertTrue(squared_spatial_frequency >= 0.0f, "Bad squared spatial frequency: %f", squared_spatial_frequency);
     // Save some time if no beam tilt
     if ( beam_tilt == 0.0f && particle_shift == 0.0f ) {
@@ -487,7 +578,7 @@ std::complex<float> CTF::EvaluateBeamTiltPhaseShift(float squared_spatial_freque
 }
 
 // Return the phase shift generated by beam tilt
-float CTF::PhaseShiftGivenBeamTiltAndShift(float squared_spatial_frequency, float beam_tilt, float particle_shift) {
+float CTF::PhaseShiftGivenBeamTiltAndShift(float squared_spatial_frequency, float beam_tilt, float particle_shift) const {
     float spatial_frequency = sqrtf(squared_spatial_frequency);
     float phase_shift       = 2.0f * PIf * spherical_aberration * squared_wavelength * squared_spatial_frequency * spatial_frequency * beam_tilt;
     phase_shift -= 2.0f * PIf * spatial_frequency * particle_shift;
@@ -495,22 +586,40 @@ float CTF::PhaseShiftGivenBeamTiltAndShift(float squared_spatial_frequency, floa
 }
 
 // Return the effective defocus at the azimuth of interest
-float CTF::DefocusGivenAzimuth(float azimuth) {
+float CTF::DefocusGivenAzimuth(float azimuth) const {
     return 0.5f * (defocus_1 + defocus_2 + cosf(2.0f * (azimuth - astigmatism_azimuth)) * (defocus_1 - defocus_2));
 }
 
+void CTF::DefocusGivenAzimuth(std::size_t n, float* output, float const* azimuths) const {
+#ifdef MKL
+    for ( std::size_t i = 0; i < n; i++ ) {
+        output[i] = 2.0f * (azimuths[i] - astigmatism_azimuth);
+    }
+
+    vmsCos(n, output, output, VML_LA | VML_FTZDAZ_OFF);
+
+    for ( std::size_t i = 0; i < n; i++ ) {
+        output[i] = 0.5f * (defocus_1 + defocus_2 + output[i] * (defocus_1 - defocus_2));
+    }
+#else
+    for ( std::size_t i = 0; i < n; i++ ) {
+        output[i] = DefocusGivenAzimuth(azimuths[i]);
+    }
+#endif
+}
+
 // Return the effective beam tilt at the azimuth of interest
-float CTF::BeamTiltGivenAzimuth(float azimuth) {
+float CTF::BeamTiltGivenAzimuth(float azimuth) const {
     return beam_tilt * cosf(azimuth - beam_tilt_azimuth);
 }
 
 // Return the effective beam tilt at the azimuth of interest
-float CTF::ParticleShiftGivenAzimuth(float azimuth) {
+float CTF::ParticleShiftGivenAzimuth(float azimuth) const {
     return particle_shift * cosf(azimuth - particle_shift_azimuth);
 }
 
 // Given acceleration voltage in keV, return the electron wavelength in Angstroms
-float CTF::WavelengthGivenAccelerationVoltage(float acceleration_voltage) {
+float CTF::WavelengthGivenAccelerationVoltage(float acceleration_voltage) const {
     //	return 12.26f / sqrtf(1000.0f * acceleration_voltage + 0.9784f * powf(1000.0f * acceleration_voltage,2)/powf(10.0f,6));
     return 12.2639f / sqrtf(1000.0f * acceleration_voltage + 0.97845e-6 * powf(1000.0f * acceleration_voltage, 2));
 }

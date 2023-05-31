@@ -178,6 +178,11 @@ if(Git_FOUND)
     endif()
 endif()
 
+function (enable_optimization_flags target)
+    target_compile_options(${target} PRIVATE -fcx-limited-range -ffinite-math-only -fno-math-errno -fno-trapping-math -fno-signed-zeros -fno-omit-frame-pointer)
+    target_compile_options(${target} PRIVATE $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>:-ftree-vectorize -funroll-loops>)
+endfunction()
+
 #
 # Add the source directory 
 #

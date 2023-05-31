@@ -433,7 +433,7 @@ void PDB::Init( ) {
         }
     }
 
-    if ( use_star_file && star_file_parameters.ReturnNumberofLines( ) > 1 ) {
+    if ( use_star_file ) {
 
         // First we need the average defocus to determine offsets in Z (for underfocus, the focal plane is above the specimen in the scope and the undefocus magnitude increases as we move away (down) the column.)
         star_file_parameters.CalculateDefocusDependence( );
@@ -708,6 +708,8 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
 
     for ( current_pdb = 0; current_pdb < number_of_pdbs; current_pdb++ ) {
         wxPrintf("Checking %ld %ld\n", pdb_ensemble[current_pdb].my_atoms.GetCount( ), my_atoms.GetCount( ));
+        wxPrintf("Check: is it using starfile: %d\n", pdb_ensemble[current_pdb].use_star_file);
+
         for ( current_particle = 0; current_particle < pdb_ensemble[current_pdb].number_of_particles_initialized; current_particle++ ) {
             ox = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][0];
             oy = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][1];
@@ -731,6 +733,7 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
             // at the minimum be highly correlated based on empirical observation.
 
             if ( pdb_ensemble[current_pdb].use_star_file ) {
+                wxPrintf("Transforming local: using star file");
                 // Fetch a clean copy of the atomic coordinates for this molecule
                 long current_atom = 0;
                 for ( long intra_mol_current_atom = 0; intra_mol_current_atom < pdb_ensemble[current_pdb].number_of_atoms; intra_mol_current_atom++ ) {
@@ -905,6 +908,7 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
                     }
                 }
 
+                wxPrintf("Local transform: applying rotmat");
                 for ( current_atom = 0; current_atom < pdb_ensemble[current_pdb].number_of_atoms; current_atom++ ) {
                     if ( my_atoms.Item(current_atom).is_real_particle ) {
 

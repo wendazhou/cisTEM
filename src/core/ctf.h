@@ -1,3 +1,7 @@
+#pragma once
+
+#include "core_headers.h"
+
 class CTF {
 
   private:
@@ -106,22 +110,29 @@ class CTF {
     inline void SetHighestFrequencyWithGoodFit(float wanted_frequency_in_reciprocal_pixels) { highest_frequency_with_good_fit = wanted_frequency_in_reciprocal_pixels; };
 
     //
-    std::complex<float> EvaluateComplex(float squared_spatial_frequency, float azimuth);
-    float               Evaluate(float squared_spatial_frequency, float azimuth);
-    float               EvaluatePowerspectrumWithThickness(float squared_spatial_frequency, float azimuth);
+    std::complex<float> EvaluateComplex(float squared_spatial_frequency, float azimuth) const;
+    float               Evaluate(float squared_spatial_frequency, float azimuth) const;
+    float               EvaluatePowerspectrumWithThickness(float squared_spatial_frequency, float azimuth) const;
 
-    float               EvaluateWithEnvelope(float squared_spatial_frequency, float azimuth);
-    float               PhaseShiftGivenSquaredSpatialFrequencyAndAzimuth(float squared_spatial_frequency, float azimuth);
-    std::complex<float> EvaluateBeamTiltPhaseShift(float squared_spatial_frequency, float azimuth);
-    float               PhaseShiftGivenBeamTiltAndShift(float squared_spatial_frequency, float beam_tilt, float particle_shift = 0.0f);
-    float               PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(float squared_spatial_frequency, float defocus);
-    float               DefocusGivenAzimuth(float azimuth);
-    float               BeamTiltGivenAzimuth(float azimuth);
-    float               ParticleShiftGivenAzimuth(float azimuth);
-    float               WavelengthGivenAccelerationVoltage(float acceleration_voltage);
+    float               EvaluateWithEnvelope(float squared_spatial_frequency, float azimuth) const;
+    float               PhaseShiftGivenSquaredSpatialFrequencyAndAzimuth(float squared_spatial_frequency, float azimuth) const;
+    std::complex<float> EvaluateBeamTiltPhaseShift(float squared_spatial_frequency, float azimuth) const;
+    float               PhaseShiftGivenBeamTiltAndShift(float squared_spatial_frequency, float beam_tilt, float particle_shift = 0.0f) const;
+    float               PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(float squared_spatial_frequency, float defocus) const;
+    float               DefocusGivenAzimuth(float azimuth) const;
+    float               BeamTiltGivenAzimuth(float azimuth) const;
+    float               ParticleShiftGivenAzimuth(float azimuth) const;
+    float               WavelengthGivenAccelerationVoltage(float acceleration_voltage) const;
+
+    // Vectorized evaluation of CTF functions
+    void  Evaluate(std::size_t n, float* output, float const* squared_spatial_frequency, float const* azimuth, float* __restrict__ buffer) const;
+    void  EvaluateWithEnvelope(std::size_t n, float* output, float const* squared_spatial_frequency, float const* azimuth, float* __restrict__ buffer) const;
+    void  DefocusGivenAzimuth(std::size_t n, float* output, float const* azimuths) const;
+    void  PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(std::size_t n, float* output, float const* squared_spatial_frequency, float const* defocus) const;
+    void  ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(std::size_t n, float* output, float const* defocus) const;
 
     // This is the sinc(xi) term derived in the supplemental of McMullan et al. (2015)
-    inline float IntegratedDefocusModulation(float squared_spatial_frequency) {
+    inline float IntegratedDefocusModulation(float squared_spatial_frequency) const {
         return sinc(PIf * wavelength * squared_spatial_frequency * sample_thickness);
     };
 
@@ -142,29 +153,29 @@ class CTF {
     void CopyFrom(CTF other_ctf);
     void ChangePixelSize(float old_pixel_size, float new_pixel_size);
 
-    inline float GetDefocus1( ) { return defocus_1; };
+    inline float GetDefocus1( ) const { return defocus_1; };
 
-    inline float GetDefocus2( ) { return defocus_2; };
+    inline float GetDefocus2( ) const { return defocus_2; };
 
-    inline float GetBeamTiltX( ) { return beam_tilt_x; };
+    inline float GetBeamTiltX( ) const { return beam_tilt_x; };
 
-    inline float GetBeamTiltY( ) { return beam_tilt_y; };
+    inline float GetBeamTiltY( ) const { return beam_tilt_y; };
 
-    inline float GetSphericalAberration( ) { return spherical_aberration; };
+    inline float GetSphericalAberration( ) const { return spherical_aberration; };
 
-    inline float GetAmplitudeContrast( ) { return amplitude_contrast; };
+    inline float GetAmplitudeContrast( ) const { return amplitude_contrast; };
 
-    inline float GetAstigmatismAzimuth( ) { return astigmatism_azimuth; };
+    inline float GetAstigmatismAzimuth( ) const { return astigmatism_azimuth; };
 
-    inline float GetAdditionalPhaseShift( ) { return additional_phase_shift; };
+    inline float GetAdditionalPhaseShift( ) const { return additional_phase_shift; };
 
-    inline float GetWavelength( ) { return wavelength; };
+    inline float GetWavelength( ) const { return wavelength; };
 
-    int   ReturnNumberOfExtremaBeforeSquaredSpatialFrequency(float squared_spatial_frequency, float azimuth);
-    float ReturnSquaredSpatialFrequencyGivenPhaseShiftAndAzimuth(float phase_shift, float azimuth);
-    float ReturnSquaredSpatialFrequencyOfAZero(int which_zero, float azimuth, bool inaccurate_is_ok = false);
-    float ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenAzimuth(float azimuth);
-    float ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(float defocus);
-    float ReturnPhaseAberrationMaximum( );
-    float ReturnPhaseAberrationMaximumGivenDefocus(float defocus);
+    int   ReturnNumberOfExtremaBeforeSquaredSpatialFrequency(float squared_spatial_frequency, float azimuth) const;
+    float ReturnSquaredSpatialFrequencyGivenPhaseShiftAndAzimuth(float phase_shift, float azimuth) const;
+    float ReturnSquaredSpatialFrequencyOfAZero(int which_zero, float azimuth, bool inaccurate_is_ok = false) const;
+    float ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenAzimuth(float azimuth) const;
+    float ReturnSquaredSpatialFrequencyOfPhaseShiftExtremumGivenDefocus(float defocus) const;
+    float ReturnPhaseAberrationMaximum( ) const;
+    float ReturnPhaseAberrationMaximumGivenDefocus(float defocus) const;
 };
