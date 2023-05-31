@@ -9,6 +9,10 @@
 #include "wave_function_propagator.h"
 #include <unistd.h> // For the ctffind to disk method (uniqe identifier based on pid)
 
+#ifdef MKL
+#include <mkl_vml.h>
+#endif
+
 WaveFunctionPropagator::WaveFunctionPropagator(float set_real_part_wave_function_in, float wanted_objective_aperture_diameter_micron,
                                                float wanted_pixel_size, int wanted_number_threads, float beam_tilt_x, float beam_tilt_y, bool do_beam_tilt_full, float* propagator_distance) {
     temp_img          = new Image[4];
@@ -284,6 +288,12 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
     int size_x = sum_image[0].logical_x_dimension;
     int size_y = sum_image[0].logical_y_dimension;
 
+    // Already allocate phase grating to compute correct size
+    phase_grating[0].Allocate(size_x, size_y, 1);
+
+    // Total size of buffers we are working with, in number of elements
+    std::size_t buffer_size = phase_grating[0].real_memory_allocated;
+
     unpadded_x_dimension = scattering_potential[0].logical_x_dimension;
     unpadded_y_dimension = scattering_potential[0].logical_y_dimension;
 
@@ -300,6 +310,11 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
     else
         starting_val = 1;
     //	int starting_val = 1; // override for new amp FIXME
+
+#ifdef MKL
+    // Temporary buffer for MKL VML - optimization: allocate with remaining images
+    float* amplitude_buffer = static_cast<float*>(mkl_malloc(sizeof(float) * buffer_size, 64));
+#endif
 
     //
     for ( int iContrast = starting_val; iContrast < 2; iContrast++ ) {
@@ -487,17 +502,24 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
             // Up until here the phase gratings are identical. So I've only put values into (0);
             // Now we introduce the aperture:
             phase_grating[1].CopyFrom(&phase_grating[0]);
-            amplitude_grating[1].CopyFrom(&amplitude_grating[0]);
+            // amplitude_grating[1].CopyFrom(&amplitude_grating[0]);
 
-#pragma omp simd
-            for ( long iPixel = 0; iPixel < phase_grating[0].real_memory_allocated; iPixel++ ) {
-                phase_grating[0].real_values[iPixel] = expf(-amplitude_grating[0].real_values[iPixel]) * std::cos(phase_grating[0].real_values[iPixel]);
+            // Compute amplitude envelope
+            for (std::size_t i = 0; i < buffer_size; i++) {
+                amplitude_buffer[i] = -amplitude_grating[0].real_values[i];
+            }
+            vmsExp(buffer_size, amplitude_buffer, amplitude_buffer, VML_LA | VML_FTZDAZ_ON);
+
+            vmsCos(buffer_size, phase_grating[0].real_values, phase_grating[0].real_values, VML_LA | VML_FTZDAZ_ON);
+            for (std::size_t i = 0; i < buffer_size; ++i) {
+                phase_grating[0].real_values[i] *= amplitude_buffer[i];
             }
 
-#pragma omp simd
-            for ( long iPixel = 0; iPixel < phase_grating[1].real_memory_allocated; iPixel++ ) {
-                phase_grating[1].real_values[iPixel] = expf(-amplitude_grating[1].real_values[iPixel]) * std::sin(phase_grating[1].real_values[iPixel]);
+            vmsSin(buffer_size, phase_grating[1].real_values, phase_grating[1].real_values, VML_LA | VML_FTZDAZ_ON);
+            for (std::size_t i = 0; i < buffer_size; ++i) {
+                phase_grating[1].real_values[i] *= amplitude_buffer[i];
             }
+
 
             MyDebugAssertFalse(phase_grating[0].HasNan( ), "There is a NAN 2a");
             MyDebugAssertFalse(phase_grating[1].HasNan( ), "There is a NAN 3a");
@@ -659,6 +681,10 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
         is_set_input_projections = false;
 
     } // loop on contrast
+
+#ifdef MKL
+    mkl_free(amplitude_buffer);
+#endif
 
     //	sum_image[tilt_IDX].MultiplyByConstant(expected_dose_per_pixel);
     return total_contrast; //( 1.0f - (total_contrast - phase_contrast)/total_contrast);

@@ -1,7 +1,9 @@
 //BEGIN_FOR_STAND_ALONE_CTFFIND
 #include "core_headers.h"
 
+#ifdef MKL
 #include <mkl_vml.h>
+#endif
 
 using namespace cistem;
 
@@ -8271,6 +8273,13 @@ void Image::PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_
         need_to_fft = true;
     }
 
+#ifdef MKL
+    std::size_t batch = physical_upper_bound_complex_x + 1;
+    float* temp_phase = static_cast<float*>(mkl_malloc(sizeof(float) * batch, 64));
+    std::complex<float>* temp_total_phase = static_cast<std::complex<float>*>(mkl_malloc(sizeof(std::complex<float>) * batch, 64));
+#endif
+
+
     for ( k = 0; k <= physical_upper_bound_complex_z; k++ ) {
         k_logical = ReturnFourierLogicalCoordGivenPhysicalCoord_Z(k);
         phase_z   = ReturnPhaseFromShift(wanted_z_shift, k_logical, logical_z_dimension);
@@ -8279,6 +8288,21 @@ void Image::PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_
             j_logical = ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j);
             phase_y   = ReturnPhaseFromShift(wanted_y_shift, j_logical, logical_y_dimension);
 
+#ifdef MKL
+            // Process the entire x direction at once
+            for (std::size_t i = 0; i < batch; ++i) {
+                phase_x = ReturnPhaseFromShift(wanted_x_shift, i, logical_x_dimension);
+                temp_phase[i] = - phase_x - phase_y - phase_z;
+            }
+
+            // Fill the complex phase
+            vmcCIS(batch, temp_phase, temp_total_phase, VML_LA | VML_FTZDAZ_ON);
+
+            for (i = 0; i < batch; ++i) {
+                complex_values[pixel_counter] *= temp_total_phase[i];
+                pixel_counter++;
+            }
+#else
             for ( i = 0; i <= physical_upper_bound_complex_x; i++ ) {
 
                 phase_x = ReturnPhaseFromShift(wanted_x_shift, i, logical_x_dimension);
@@ -8288,8 +8312,14 @@ void Image::PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_
 
                 pixel_counter++;
             }
+#endif
         }
     }
+
+#ifdef MKL
+    mkl_free(temp_phase);
+    mkl_free(temp_total_phase);
+#endif
 
     if ( need_to_fft == true )
         BackwardFFT( );

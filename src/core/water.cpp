@@ -167,9 +167,7 @@ void Water::SeedWaters3d( ) {
     VSLStreamStatePtr stream;
     vslNewStream(&stream, VSL_BRNG_PHILOX4X32X10, std::random_device{ }( ));
 
-    std::vector<int> water_included(incX * incY * this->vol_nZ);
-
-    vslDeleteStream(&stream);
+    int* water_included = static_cast<int*>(mkl_malloc(sizeof(int) * incX * incY * this->vol_nZ, 64));
 
     for ( int i = 0; i < nThreads; i++ ) {
         iLower = i * incX + size_neighborhood;
@@ -180,7 +178,7 @@ void Water::SeedWaters3d( ) {
 
             //			for (int k = this->size_neighborhood; k < this->vol_nZ - this->size_neighborhood; k++)
 
-            viRngBernoulli(VSL_RNG_METHOD_BERNOULLI_ICDF, stream, size_neighborhood * size_neighborhood * this->vol_nZ, water_included.data( ), 1 - random_sigma_cutoff);
+            viRngBernoulli(VSL_RNG_METHOD_BERNOULLI_ICDF, stream, incX * incY * this->vol_nZ, water_included, 1 - random_sigma_cutoff);
             std::size_t local_idx = 0;
 
             for ( int k = 0; k < this->vol_nZ; k++ ) {
@@ -200,6 +198,9 @@ void Water::SeedWaters3d( ) {
             }
         }
     }
+
+    vslDeleteStream(&stream);
+    mkl_free(water_included);
 
     wxPrintf("waters added %3.3e (%2.2f%)\n", (float)this->number_of_waters, 100.0f * (float)this->number_of_waters / n_waters_lower_bound);
 }

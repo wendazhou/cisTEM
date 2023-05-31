@@ -451,7 +451,7 @@ void CTF::Evaluate(std::size_t n, float* output, float const* squared_spatial_fr
 
     if ( low_resolution_contrast == 0.0f ) {
         this->PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(n, output, squared_spatial_frequencies, buffer);
-        vmsSin(n, output, output, VML_LA | VML_FTZDAZ_OFF);
+        vmsSin(n, output, output, VML_LA | VML_FTZDAZ_ON);
         for ( std::size_t i = 0; i < n; i++ ) {
             output[i] = -output[i];
         }
@@ -471,7 +471,7 @@ void CTF::Evaluate(std::size_t n, float* output, float const* squared_spatial_fr
         output[i] = output[i] + (output[i] >= threshold) * low_resolution_contrast * (threshold - output[i]) / threshold + PIf;
     }
 
-    vmsSin(n, output, output, VML_LA | VML_FTZDAZ_OFF);
+    vmsSin(n, output, output, VML_LA | VML_FTZDAZ_ON);
 }
 
 // Return the value of the powerspectrum at the given squared spatial frequency and azimuth taken into account the sample thickness
@@ -519,11 +519,11 @@ void CTF::EvaluateWithEnvelope(std::size_t n, float* output, float const* square
 
         buffer[i] = common_term * (c3 * ssf + c4 * a2);
     }
-    vmsExp(n, buffer, buffer, VML_LA | VML_FTZDAZ_OFF);
+    vmsExp(n, buffer, buffer, VML_LA | VML_FTZDAZ_ON);
 
     DefocusGivenAzimuth(n, output, azimuth);
     PhaseShiftGivenSquaredSpatialFrequencyAndDefocus(n, output, squared_spatial_frequency, output);
-    vmsSin(n, output, output, VML_LA | VML_FTZDAZ_OFF);
+    vmsSin(n, output, output, VML_LA | VML_FTZDAZ_ON);
 
     for (std::size_t i = 0; i < n; ++i) {
         output[i] = -output[i] * buffer[i];
@@ -596,7 +596,7 @@ void CTF::DefocusGivenAzimuth(std::size_t n, float* output, float const* azimuth
         output[i] = 2.0f * (azimuths[i] - astigmatism_azimuth);
     }
 
-    vmsCos(n, output, output, VML_LA | VML_FTZDAZ_OFF);
+    vmsCos(n, output, output, VML_LA | VML_FTZDAZ_ON);
 
     for ( std::size_t i = 0; i < n; i++ ) {
         output[i] = 0.5f * (defocus_1 + defocus_2 + output[i] * (defocus_1 - defocus_2));
