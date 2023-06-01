@@ -1,5 +1,7 @@
 #include "core_headers.h"
 
+#include <algorithm>
+#include <memory>
 #include <mkl_vsl.h>
 
 const double SOLVENT_DENSITY = 0.94; // 0.94 +/- 0.02 Ghormley JA, Hochanadel CJ. 1971
@@ -9,11 +11,11 @@ const double MW_CARBON       = 12.0107;
 const double CARBON_X_ANG    = 384.0;
 const double CARBON_Y_ANG    = 384.0;
 
-Water::Water(bool do_carbon) {
+Water::Water(bool do_carbon) : water_coords(nullptr) {
     this->simulate_phase_plate = do_carbon;
 }
 
-Water::Water(const PDB* current_specimen, int wanted_size_neighborhood, float wanted_pixel_size, float wanted_dose_per_frame, RotationMatrix max_rotation, float in_plane_rotation, int* padX, int* padY, int nThreads, bool pad_based_on_rotation, bool do_carbon) {
+Water::Water(const PDB* current_specimen, int wanted_size_neighborhood, float wanted_pixel_size, float wanted_dose_per_frame, RotationMatrix max_rotation, float in_plane_rotation, int* padX, int* padY, int nThreads, bool pad_based_on_rotation, bool do_carbon) : water_coords(nullptr) {
 
     //
     this->simulate_phase_plate = do_carbon;
@@ -21,8 +23,8 @@ Water::Water(const PDB* current_specimen, int wanted_size_neighborhood, float wa
 }
 
 Water::~Water( ) {
-    if ( is_allocated_water_coords ) {
-        delete[] water_coords;
+    if ( water_positions_ ) {
+        mkl_free(water_positions_);
     }
 }
 
@@ -148,8 +150,10 @@ void Water::SeedWaters3d( ) {
     // 																	  (this->vol_nY - this->size_neighborhood) *
     // 		 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	  (this->vol_nZ - this->size_neighborhood)), random_sigma_cutoff, random_sigma_negativo);
 
-    water_coords              = new AtomPos[n_waters_possible];
-    is_allocated_water_coords = true;
+    water_positions_             = static_cast<float*>(mkl_malloc(sizeof(float) * 4 * n_waters_possible, 64));
+    transformed_water_positions_ = static_cast<float*>(mkl_malloc(sizeof(float) * 4 * n_waters_possible, 64));
+    water_coords                 = AtomPosArrayWrapper{water_positions_};
+    is_allocated_water_coords    = true;
 
     //  There are millions to billions of waters. We want to schedule the threads in a way that avoids atomic collisions
     //  Since the updates are in a projected potential, this means we want a given thread to be assigned a block of waters that DO
@@ -191,6 +195,7 @@ void Water::SeedWaters3d( ) {
                             water_coords[number_of_waters].x = (float)iInner;
                             water_coords[number_of_waters].y = (float)jInner;
                             water_coords[number_of_waters].z = (float)k;
+                            water_coords[number_of_waters].w = 1.0f;
                             number_of_waters++;
                         }
                     }
@@ -289,6 +294,14 @@ void Water::ShakeWaters3d(int number_of_threads) {
         vslDeleteStream(&stream);
     }
 }
+
+namespace {
+struct AtomPos {
+    float x;
+    float y;
+    float z;
+};
+} // namespace
 
 void Water::ReturnPadding(RotationMatrix max_rotation, float in_plane_rotation, int current_nZ, int current_nX, int current_nY, int* padX, int* padY, int* padZ) {
 
@@ -415,4 +428,86 @@ void Water::ReturnPadding(RotationMatrix max_rotation, float in_plane_rotation, 
             //    	*padZ = myroundint(1.0f*current_nZ*sinf(max_tilt * (float)PIf / 180.0f));
         }
     }
+}
+
+namespace {
+
+void set_matrix_identity(float* matrix, int n) {
+    std::memset(matrix, 0, n * n * sizeof(float));
+    for ( int i = 0; i < n; i++ ) {
+        matrix[i * n + i] = 1.0f;
+    }
+}
+
+} // namespace
+
+void Water::ComputeTransformedPositions(RotationMatrix rotation) {
+    alignas(64) float transform[4 * 4];
+    alignas(64) float transform_rotate[4 * 4];
+    alignas(64) float transform_translate[4 * 4];
+
+    // Set translation matrix
+    set_matrix_identity(transform_translate, 4);
+    transform_translate[3]  = -vol_oX;
+    transform_translate[7]  = -vol_oY;
+    transform_translate[11] = -vol_oZ;
+
+    // Set rotation matrix
+    set_matrix_identity(transform_rotate, 4);
+    for ( int i = 0; i < 3; i++ ) {
+        for ( int j = 0; j < 3; j++ ) {
+            transform_rotate[i * 4 + j] = rotation.m[i][j];
+        }
+    }
+
+    // Compute total transform
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 4, 4, 4, 1.0f, transform_translate, 4, transform_rotate, 4, 0.0f, transform, 4);
+
+    // Transform all the positions
+    // We apply the transposed transform on the right
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, number_of_waters, 4, 4, 1.0f, water_positions_, 4, transform, 4, 0.0f, transformed_water_positions_, 4);
+}
+
+namespace {
+    struct Vec4 {
+        float x, y, z, w;
+    };
+
+#ifdef __cpp_lib_start_lifetime_as
+    using std::start_lifetime_as_array;
+#else
+    template<typename T>
+    T* start_lifetime_as_array(void* p, std::size_t n) noexcept {
+        return static_cast<T*>(p);
+    }
+
+    template<typename T>
+    T const* start_lifetime_as_array(void const* p, std::size_t n) noexcept {
+        return static_cast<T*>(p);
+    }
+#endif
+}
+
+void Water::SortTransformedPositions() {
+    Vec4* positions = start_lifetime_as_array<Vec4>(transformed_water_positions_, number_of_waters);
+
+    std::sort(positions, positions + number_of_waters, [](const Vec4& a, const Vec4& b) {
+        return a.z < b.z;
+    });
+
+    transformed_water_positions_ = start_lifetime_as_array<float>(positions, number_of_waters * 4);
+}
+
+std::pair<std::size_t, std::size_t> Water::GetSlabRange(float slab_z_start, float slab_z_end) const {
+    Vec4 const* positions = start_lifetime_as_array<Vec4>(transformed_water_positions_, number_of_waters);
+
+    auto slab_start = std::lower_bound(positions, positions + number_of_waters, slab_z_start, [](const Vec4& a, float z) {
+        return a.z < z;
+    });
+
+    auto slab_end = std::upper_bound(positions, positions + number_of_waters, slab_z_end, [](float z, const Vec4& b) {
+        return z < b.z;
+    });
+
+    return {slab_start - positions, slab_end - positions};
 }

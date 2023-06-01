@@ -18,37 +18,37 @@ using namespace cistem_timer;
 
 // From Shang and Sigworth, average of polar and non-polar from table 1 (with correction to polar radius 3, 1.7-->3.0);
 // terms 3-5 have the average atomic radius of C,N,O,H added to shift the curve to be relative to atomic center.
-const float xtra_shift        = -0.5f;
-const float HYDRATION_VALS[8] = {0.1750f, -0.1350f, 2.23f, 3.43f, 4.78f, 1.0000f, 1.7700f, 0.9550f};
-const float DISTANCE_INIT     = 100000.0f; // Set the distance slab to a large value
+static const float xtra_shift        = -0.5f;
+static const float HYDRATION_VALS[8] = {0.1750f, -0.1350f, 2.23f, 3.43f, 4.78f, 1.0000f, 1.7700f, 0.9550f};
+static const float DISTANCE_INIT     = 100000.0f; // Set the distance slab to a large value
 // I would have thought this should be 1/4, however, when calculating a 3D and then plotting ln(F) vs freq^-2, it is clear that the relative difference
 // requires this factor to be 1/2. This is somewhat bothersome and ideally would have an explanation.
-const float BfactorFactor = 1.0f;
-const int   N_WATER_TERMS = 40;
+static const float BfactorFactor = 1.0f;
+static const int   N_WATER_TERMS = 40;
 
-const float WATER_BFACTOR_PER_ELECTRON_PER_SQANG = 34.0f;
-const float PHASE_PLATE_BFACTOR                  = 4.0f;
-const float inelastic_scalar_water               = 0.0725f; // this value is for 1 Apix. When not taking the sqrt (original but I think wrong approach) the value 0.75 worked
+static const float WATER_BFACTOR_PER_ELECTRON_PER_SQANG = 34.0f;
+static const float PHASE_PLATE_BFACTOR                  = 4.0f;
+static const float inelastic_scalar_water               = 0.0725f; // this value is for 1 Apix. When not taking the sqrt (original but I think wrong approach) the value 0.75 worked
 
 // Parameters for calculating water. Because all waters are the same, except a sub-pixel origin offset. A SUB_PIXEL_NeL stack of projected potentials is pre-calculated with given offsets.
-const AtomType SOLVENT_TYPE       = oxygen; // 2 N, 3 O 15, fit water
-const float    water_oxygen_ratio = 1.0f; //0.8775;
+static const AtomType SOLVENT_TYPE       = oxygen; // 2 N, 3 O 15, fit water
+static const float    water_oxygen_ratio = 1.0f; //0.8775;
 
-const int SUB_PIXEL_NEIGHBORHOOD = 2;
-const int SUB_PIXEL_NeL          = pow((SUB_PIXEL_NEIGHBORHOOD * 2 + 1), 3);
+static const int SUB_PIXEL_NEIGHBORHOOD = 2;
+static const int SUB_PIXEL_NeL          = pow((SUB_PIXEL_NEIGHBORHOOD * 2 + 1), 3);
 
 // FIXME this should just be given to Cosine Rectangular method in the image class
-const int   TAPERWIDTH = 29; // TODO this should be set to 12 with zeros padded out by size neighborhood and calculated by taper = 0.5+0.5.*cos((((1:pixelFallOff)).*pi)./(length((1:pixelFallOff+1))));
-const int   N_TAPERS   = 3; // for trimming final image
-const float TAPER[29]  = {0, 0, 0, 0, 0,
-                          0.003943, 0.015708, 0.035112, 0.061847, 0.095492, 0.135516, 0.181288, 0.232087,
-                          0.287110, 0.345492, 0.406309, 0.468605, 0.531395, 0.593691, 0.654508, 0.712890,
-                          0.767913, 0.818712, 0.864484, 0.904508, 0.938153, 0.964888, 0.984292, 0.996057};
+static const int   TAPERWIDTH = 29; // TODO this should be set to 12 with zeros padded out by size neighborhood and calculated by taper = 0.5+0.5.*cos((((1:pixelFallOff)).*pi)./(length((1:pixelFallOff+1))));
+static const int   N_TAPERS   = 3; // for trimming final image
+static const float TAPER[29]  = {0, 0, 0, 0, 0,
+                                 0.003943, 0.015708, 0.035112, 0.061847, 0.095492, 0.135516, 0.181288, 0.232087,
+                                 0.287110, 0.345492, 0.406309, 0.468605, 0.531395, 0.593691, 0.654508, 0.712890,
+                                 0.767913, 0.818712, 0.864484, 0.904508, 0.938153, 0.964888, 0.984292, 0.996057};
 
-const int IMAGEPADDING = 0; //512; // Padding applied for the Fourier operations in the propagation steps. Removed prior to writing out.
-const int IMAGETRIMVAL = 0; //IMAGEPADDING + 2*TAPERWIDTH;
+static const int IMAGEPADDING = 0; //512; // Padding applied for the Fourier operations in the propagation steps. Removed prior to writing out.
+static const int IMAGETRIMVAL = 0; //IMAGEPADDING + 2*TAPERWIDTH;
 
-const float MAX_PIXEL_SIZE = 4.0f;
+static const float MAX_PIXEL_SIZE = 4.0f;
 
 //beam_tilt_xform
 
@@ -73,19 +73,19 @@ const float SET_TILT_ANGLES[n_tilt_angles] = {0, 3, -3, 6, -6, 9, -9, 12, -12, 1
 
 // Assuming a perfect counting - so no read noise, and no coincednce loss. Then we have a flat NPS and the DQE is just DQE(0)*MTF^2
 // The parameters below are for a 5 gaussian fit to 300 KeV , 2.5 EPS from Ruskin et al. with DQE(0) = 0.791
-const float DQE_PARAMETERS_A[1][5] = {
+static const float DQE_PARAMETERS_A[1][5] = {
 
         {-0.01516, -0.5662, -0.09731, -0.01551, 21.47}
 
 };
 
-const float DQE_PARAMETERS_B[1][5] = {
+static const float DQE_PARAMETERS_B[1][5] = {
 
         {0.02671, -0.02504, 0.162, 0.2831, -2.28}
 
 };
 
-const float DQE_PARAMETERS_C[1][5] = {
+static const float DQE_PARAMETERS_C[1][5] = {
 
         {0.01774, 0.1441, 0.1082, 0.07916, 1.372}
 
@@ -559,8 +559,7 @@ class SimulateApp : public MyApp {
 
         // Create temporary array of signs
         bool t_values[] = {
-            t1, t2, t3
-        };
+                t1, t2, t3};
 
         for ( int iGaussian = 0; iGaussian < 5; iGaussian++ ) {
             float t = 1.0f;
@@ -571,7 +570,7 @@ class SimulateApp : public MyApp {
                 float left_side  = gaussian_norm_coords[iGaussian * 6 + i * 2 + 0];
                 float right_side = gaussian_norm_coords[iGaussian * 6 + i * 2 + 1];
 
-                if (t_values[i]) {
+                if ( t_values[i] ) {
                     v = right_side - left_side;
                 }
                 else {
@@ -600,20 +599,18 @@ class SimulateApp : public MyApp {
 
     // Shift the curves to the right as the values from Shang/Sigworth are distance to VDW radius (avg C/O/N/H = 1.48 A)
     // FIXME now that you are saving distances, you can also consider polar/non-polar residues separately for an "effective" distance since the curves have the same shape with a linear offset.
-    const float PUSH_BACK_BY = -1.48;
-
     inline float return_hydration_weight(float& radius) {
-        return 0.5f + 0.5f * std::erff((radius + PUSH_BACK_BY) - (HYDRATION_VALS[2] + xtra_shift * this->wanted_pixel_size) / (sqrtf(2) * HYDRATION_VALS[5])) +
-               HYDRATION_VALS[0] * expf(-powf((radius + PUSH_BACK_BY) - (HYDRATION_VALS[3] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[6], 2))) +
-               HYDRATION_VALS[1] * expf(-powf((radius + PUSH_BACK_BY) - (HYDRATION_VALS[4] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[7], 2)));
+        return 0.5f + 0.5f * std::erff(((radius ) - (HYDRATION_VALS[2] + xtra_shift * this->wanted_pixel_size)) / (sqrtf(2) * HYDRATION_VALS[5])) +
+               HYDRATION_VALS[0] * expf(-powf((radius ) - (HYDRATION_VALS[3] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[6], 2))) +
+               HYDRATION_VALS[1] * expf(-powf((radius ) - (HYDRATION_VALS[4] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[7], 2)));
     }
 
     // Same as above but taper to zero from 3 - 7 Ang
     inline float return_hydration_weight_tapered(float taper_from, float& radius) {
 
-        return (0.5f + 0.5f * std::erff((radius + PUSH_BACK_BY) - (HYDRATION_VALS[2] + xtra_shift * this->wanted_pixel_size) / (sqrtf(2) * HYDRATION_VALS[5])) +
-                HYDRATION_VALS[0] * expf(-powf((radius + PUSH_BACK_BY) - (HYDRATION_VALS[3] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[6], 2))) +
-                HYDRATION_VALS[1] * expf(-powf((radius + PUSH_BACK_BY) - (HYDRATION_VALS[4] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[7], 2)))) *
+        return (0.5f + 0.5f * std::erff(((radius ) - (HYDRATION_VALS[2] + xtra_shift * this->wanted_pixel_size)) / (sqrtf(2) * HYDRATION_VALS[5])) +
+                HYDRATION_VALS[0] * expf(-powf((radius ) - (HYDRATION_VALS[3] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[6], 2))) +
+                HYDRATION_VALS[1] * expf(-powf((radius ) - (HYDRATION_VALS[4] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[7], 2)))) *
                (0.5f + 0.5f * cosf(radius - taper_from));
     }
 
@@ -1723,12 +1720,18 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 timer.start("Shake H20");
                 water_box.ShakeWaters3d(this->number_of_threads);
                 timer.lap("Shake H20");
+
+                water_box.ComputeTransformedPositions(rotate_waters);
+                water_box.SortTransformedPositions( );
             }
             else if ( DO_SOLVENT && ! do3d && ! DO_PHASE_PLATE ) {
 
                 timer.start("Shake H20");
                 water_box.ShakeWaters3d(this->number_of_threads);
                 timer.lap("Shake H20");
+
+                water_box.ComputeTransformedPositions(rotate_waters);
+                water_box.SortTransformedPositions( );
             }
 
             timer.start("Allocate Sum");
@@ -1884,31 +1887,12 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                 if ( add_mean_water_potential ) {
                     coords.Allocate(&water_mask_slab, (PaddingStatus)solvent, true, false);
-// Not surprisingly a dynamic schedule here is super slow. Interestingly, multiplying by zero instead of setting to zero is about 80% runtime
-#pragma omp parallel for num_threads(this->number_of_threads)
-                    for ( long pixel_counter = 0; pixel_counter < scattering_slab.real_memory_allocated; pixel_counter++ ) {
-                        // Somehow multiplication by zero is about 70% runtime relative to seting zero with image method which in turn is 87 % runtime compared to std::fill or std::memset
-                        water_mask_slab.real_values[pixel_counter] = 1.0f;
-                    }
+                    water_mask_slab.SetToConstant(1.0f);
                 }
 
-// Not surprisingly a dynamic schedule here is super slow. Interestingly, multiplying by zero instead of setting to zero is about 80% runtime
-#pragma omp parallel for num_threads(this->number_of_threads)
-                for ( long pixel_counter = 0; pixel_counter < scattering_slab.real_memory_allocated; pixel_counter++ ) {
-                    // Somehow multiplication by zero is about 70% runtime relative to seting zero with image method which in turn is 87 % runtime compared to std::fill or std::memset
-                    scattering_slab.real_values[pixel_counter] *= 0.0f;
-                }
-
-#pragma omp parallel for num_threads(this->number_of_threads)
-                for ( long pixel_counter = 0; pixel_counter < inelastic_slab.real_memory_allocated; pixel_counter++ ) {
-                    // Somehow multiplication by zero is about 70% runtime relative to seting zero with image method which in turn is 87 % runtime compared to std::fill or std::memset
-                    inelastic_slab.real_values[pixel_counter] *= 0.0f;
-                }
-
-#pragma omp parallel for num_threads(this->number_of_threads)
-                for ( long pixel_counter = 0; pixel_counter < distance_slab.real_memory_allocated; pixel_counter++ ) {
-                    distance_slab.real_values[pixel_counter] = DISTANCE_INIT;
-                }
+                scattering_slab.SetToConstant(0.0f);
+                inelastic_slab.SetToConstant(0.0f);
+                distance_slab.SetToConstant(DISTANCE_INIT);
 
                 timer.lap("Allocate 3d slabs");
 
@@ -2884,11 +2868,6 @@ void SimulateApp::calc_scattering_potential(const PDB*     current_specimen,
     float bfX(0), bfY(0), bfZ(0);
 
     float bPlusB[5];
-// TODO experiment with the scheduling. Until the specimen is consistently full, many consecutive slabs may have very little work for the assigned threads to handle.
-#pragma omp parallel for num_threads(this->number_of_threads) private(                                                                 \
-                atom_id, bFactor, bPlusB, radius, ix, iy, iz, x1, x2, y1, y2, z1, z2, indX, indY,                                      \
-                        indZ, sx, sy, sz, dx, dy, dz, xDistSq, yDistSq, zDistSq, iLim, jLim, kLim, iGaussian, element_inelastic_ratio, \
-                        water_offset, atoms_values_tmp, atoms_added_idx, atoms_distances_tmp, n_atoms_added, pixel_offset, bfX, bfY, bfZ)
     for ( long current_atom = 0; current_atom < this->number_of_non_water_atoms; current_atom++ ) {
 
         n_atoms_added = 0;
@@ -2939,7 +2918,6 @@ void SimulateApp::calc_scattering_potential(const PDB*     current_specimen,
         dy -= pixel_offset;
         dz -= pixel_offset;
 
-#pragma omp simd
         for ( iGaussian = 0; iGaussian < 5; iGaussian++ ) {
             bPlusB[iGaussian] = 2 * PIf / sqrt(bFactor + sp.ReturnScatteringParamtersB(atom_id, iGaussian));
         }
@@ -2985,24 +2963,12 @@ void SimulateApp::calc_scattering_potential(const PDB*     current_specimen,
                 } // end of loop over the neighborhood Y
             } // end of loop over the neighborhood X
 
-            //        wxPrintf("Possible positions added %3.3e %\n", 100.0f* (float)n_atoms_added/(float)cubic_vol);
-#pragma omp critical
             for ( int iIDX = 0; iIDX < n_atoms_added - 1; iIDX++ ) {
-                //                #pragma omp atomic update
                 scattering_slab->real_values[atoms_added_idx[iIDX]] += (atoms_values_tmp[iIDX]);
                 // This is the value for 100 KeV --> scale (if needed) the final projected density
                 //                #pragma omp atomic update
                 inelastic_slab->real_values[atoms_added_idx[iIDX]] += element_inelastic_ratio * atoms_values_tmp[iIDX];
-                //                #pragma omp critical
-                //                {
                 distance_slab->real_values[atoms_added_idx[iIDX]] = std::min(distance_slab->real_values[atoms_added_idx[iIDX]], atoms_distances_tmp[iIDX]);
-                //                }
-                //                {
-                //                    tmp_distance = distance_slab->real_values[atoms_added_idx[iIDX]];
-                //                    tmp_distance = std::min(tmp_distance, atoms_distances_tmp[iIDX]);
-                //                    distance_slab->real_values[atoms_added_idx[iIDX]] = tmp_distance;
-                ////                    distance_slab->real_values[atoms_added_idx[iIDX]] = std::min(distance_slab->real_values[atoms_added_idx[iIDX]],atoms_distances_tmp[iIDX]);
-                //                }
             }
 
         } // if statment into neigh
@@ -3143,7 +3109,6 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
     int         iSubPixLinearIndex;
     float       avg_cutoff;
     float       current_weight    = 0.0f;
-    float       current_potential = 0.0f;
     float       current_distance  = 0.0f;
     int         iPot;
     const float pixel_offset = 0.5f;
@@ -3165,29 +3130,27 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
     projected_water_atoms.Allocate(scattering_slab->logical_x_dimension, scattering_slab->logical_y_dimension, 1);
     projected_water_atoms.SetToConstant(0.0f);
 
-    // To compare the thread block ordering, undo with schedule(dynamic,1)
-    // schedule(static, water_box->number_of_waters /number_of_threads )
-
-    //    timer.lap("water_pre");
+    float const* transformed_water_pos = water_box->GetTransformedPositions( );
 
     float slab_min_z = (float)slabIDX_start[iSlab];
     float slab_max_z = (float)slabIDX_end[iSlab] + 1;
 
-#pragma omp parallel for num_threads(this->number_of_threads)                                                                                                        \
-        schedule(static, water_box->number_of_waters / number_of_threads) private(radius, ix, iy, iz, dx, dy, dz, x1, y1, z1, indX, indY, indZ, int_x, int_y, int_z, \
-                                                                                          sx, sy, iSubPixX, iSubPixY, iSubPixZ, iSubPixLinearIndex,                  \
-                                                                                          current_weight, current_distance, current_potential)
+    auto slab_indices = water_box->GetSlabRange(slab_min_z - rotated_oZ - pixel_offset, slab_max_z - rotated_oZ - pixel_offset);
 
-    for ( int current_atom = 0; current_atom < water_box->number_of_waters; current_atom++ ) {
+    for ( int current_atom = slab_indices.first; current_atom < slab_indices.second; current_atom++ ) {
 
-        water_box->ReturnCenteredCoordinates(current_atom, dx, dy, dz);
+        // water_box->ReturnCenteredCoordinates(current_atom, dx, dy, dz);
+        // rotate_waters.RotateCoords(dx, dy, dz, ix, iy, iz);
 
-        rotate_waters.RotateCoords(dx, dy, dz, ix, iy, iz);
+        ix = transformed_water_pos[current_atom * 4 + 0];
+        iy = transformed_water_pos[current_atom * 4 + 1];
+        iz = transformed_water_pos[current_atom * 4 + 2];
+
         // The broadest contition for exclusion is being outside the slab, so calculate that first to avoid redundant calcs.
         // We short-circuit a lot of float-to-int computation here which are time consuming
 
         float z_pos = iz + rotated_oZ + pixel_offset;
-        if (z_pos <= slab_min_z || z_pos > slab_max_z) {
+        if ( z_pos <= slab_min_z || z_pos > slab_max_z ) {
             continue;
         }
 
@@ -3227,7 +3190,11 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
 
                 iSubPixLinearIndex = int(water_edge * water_edge * iSubPixZ) + int(water_edge * iSubPixY) + (int)iSubPixX;
 
-                current_potential = scattering_slab->ReturnRealPixelFromPhysicalCoord(int_x - 1, int_y - 1, int_z - slabIDX_start[iSlab]);
+                if ( iSubPixLinearIndex < 0 || iSubPixLinearIndex >= SUB_PIXEL_NeL ) {
+                    // Computed invalid sub-pixel offset
+                    continue;
+                }
+
                 current_distance  = distance_slab->ReturnRealPixelFromPhysicalCoord(int_x - 1, int_y - 1, int_z - slabIDX_start[iSlab]);
 
                 // FIXME
@@ -3240,39 +3207,31 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
 
                         current_distance = sqrtf(current_distance);
                         current_weight   = return_hydration_weight(current_distance);
-                        //                    wxPrintf("Hydration weight at distance r is %3.3e %3.3f\n",current_weight,current_distance);
                     }
                     else {
                         current_weight = 1.0f;
                     }
                 }
 
-                for ( sy = 0; sy < upper_bound; sy++ ) {
-                    indY = int_y - upper_bound + sy + size_neighborhood_water + 1;
-                    for ( sx = 0; sx < upper_bound; sx++ ) {
-                        indX = int_x - upper_bound + sx + size_neighborhood_water + 1;
-                        // Even with the periodic boundaries checked in shake, the rotation may place waters out of bounds. TODO this is true for non-waters as well.
-                        if ( indX >= 0 && indX < projected_water_atoms.logical_x_dimension && indY >= 0 && indY < projected_water_atoms.logical_y_dimension ) {
+                // Accumulate existing rasterized potential
+                // Note we clip the bounds to avoid going out of bound
 
-                            //                        wxPrintf("%d %d ,%d,  %d %d %d sx sy idx\n", sx, sy, iSubPixLinearIndex, iSubPixX, iSubPixY, iSubPixZ);
-                            //                        if (iSubPixLinearIndex < 0 || iSubPixLinearIndex > SUB_PIXEL_NeL -1)
-                            //                        {
-                            //                            wxPrintf("%d %d ,%d,  %d %d %d sx sy idx\n", sx, sy, iSubPixLinearIndex, iSubPixX, iSubPixY, iSubPixZ);
-                            //                            continue;
-                            //                        }
-                            if ( iSubPixLinearIndex >= 0 && iSubPixLinearIndex <= SUB_PIXEL_NeL - 1 ) {
-                                //if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-                                //    timer.start("omp");
+                // Offsets represent linear offset from subgrid to grid
+                int x_offset = int_x - upper_bound + size_neighborhood_water + 1;
+                int y_offset = int_y - upper_bound + size_neighborhood_water + 1;
 
-#pragma omp atomic update
-                                projected_water_atoms.real_values[projected_water_atoms.ReturnReal1DAddressFromPhysicalCoord(indX, indY, 0)] +=
-                                        (current_weight * this->projected_water[iSubPixLinearIndex].ReturnRealPixelFromPhysicalCoord(sx, sy, 0)); // TODO could I land out of bounds?] += projected_water_atoms[iSubPixLinearIndex].real_values[iWater];
-                                //if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-                                //    timer.lap("omp");
-                            }
+                // Compute subgrid bounds that are also within grid bounds
+                int x_start = std::max(0, -x_offset);
+                int x_end   = std::min(upper_bound, projected_water_atoms.logical_x_dimension - x_offset);
+                int y_start = std::max(0, -y_offset);
+                int y_end   = std::min(upper_bound, projected_water_atoms.logical_y_dimension - y_offset);
 
-                            //                        wxPrintf("Current Water %3.3e\n",current_weight*this->projected_water[iSubPixLinearIndex].real_values[this->projected_water[iSubPixLinearIndex].ReturnReal1DAddressFromPhysicalCoord(sx,sy,0)]);
-                        }
+                for ( sy = y_start; sy < y_end; sy++ ) {
+                    indY = y_offset + sy;
+                    for ( sx = x_start; sx < x_end; sx++ ) {
+                        indX = x_offset + sx;
+                        projected_water_atoms.real_values[projected_water_atoms.ReturnReal1DAddressFromPhysicalCoord(indX, indY, 0)] +=
+                                (current_weight * this->projected_water[iSubPixLinearIndex].ReturnRealPixelFromPhysicalCoord(sx, sy, 0));
                     }
                 }
             }

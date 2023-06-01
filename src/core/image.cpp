@@ -761,9 +761,14 @@ void Image::MultiplyPixelWise(Image& other_image) {
     if ( is_in_real_space ) {
         MyDebugAssertTrue(other_image.is_in_real_space, "Other image needs to be in real space");
         MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images do not have same dimensions");
+
+#ifdef MKL
+        vsMul(real_memory_allocated, real_values, other_image.real_values, real_values);
+#else
         for ( pixel_counter = 0; pixel_counter < real_memory_allocated; pixel_counter++ ) {
             real_values[pixel_counter] *= other_image.real_values[pixel_counter];
         }
+#endif
     }
     else {
         if ( other_image.is_in_real_space ) {
@@ -796,10 +801,14 @@ void Image::MultiplyPixelWise(Image& other_image) {
         else {
             // Both images are in Fourier space
             MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images do not have same dimensions");
-            // TODO: add MKL implementation (see EulerSearch::Run for a similar example)
+
+#ifdef MKL
+            vcMul(real_memory_allocated / 2, complex_values, other_image.complex_values, complex_values);
+#else
             for ( pixel_counter = 0; pixel_counter < real_memory_allocated / 2; pixel_counter++ ) {
                 complex_values[pixel_counter] *= other_image.complex_values[pixel_counter];
             }
+#endif
         }
     }
 }
@@ -5074,6 +5083,12 @@ void Image::RemoveFFTWPadding( ) {
 void Image::SetToConstant(float wanted_value) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
 
+    if (wanted_value == 0.0f) {
+        // special case when zeroing - can leverage efficient byte-level memset
+        std::memset(real_values, 0, real_memory_allocated * sizeof(float));
+        return;
+    }
+
     for ( long pixel_counter = 0; pixel_counter < real_memory_allocated; pixel_counter++ ) {
         real_values[pixel_counter] = wanted_value;
     }
@@ -6126,18 +6141,27 @@ void Image::AddImage(Image* other_image) {
                       "Image dimensions do not match, Image  %d, %d, %d \nImage to be added %d, %d, %d",
                       logical_x_dimension, logical_y_dimension, logical_z_dimension,
                       other_image->logical_x_dimension, other_image->logical_y_dimension, other_image->logical_z_dimension);
+
+#ifdef MKL
+    vsAdd(real_memory_allocated, real_values, other_image->real_values, real_values);
+#else
     for ( long pixel_counter = 0; pixel_counter < real_memory_allocated; pixel_counter++ ) {
         real_values[pixel_counter] += other_image->real_values[pixel_counter];
     }
+#endif
 }
 
 void Image::SubtractImage(Image* other_image) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertTrue(HasSameDimensionsAs(other_image), "Images should have same dimensions, but they don't: %i %i %i        %i %i %i", logical_x_dimension, logical_y_dimension, logical_z_dimension, other_image->logical_x_dimension, other_image->logical_y_dimension, other_image->logical_z_dimension);
 
+#ifdef MKL
+    vsSub(real_memory_allocated, real_values, other_image->real_values, real_values);
+#else
     for ( long pixel_counter = 0; pixel_counter < real_memory_allocated; pixel_counter++ ) {
         real_values[pixel_counter] -= other_image->real_values[pixel_counter];
     }
+#endif
 }
 
 void Image::SubtractSquaredImage(Image* other_image) {

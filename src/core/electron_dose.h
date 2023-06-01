@@ -1,3 +1,7 @@
+#pragma once
+
+#include "core_headers.h"
+
 class ElectronDose {
   private:
 
@@ -17,23 +21,26 @@ class ElectronDose {
     ElectronDose(float wanted_acceleration_voltage, float wanted_pixel_size);
 
     void  Init(float wanted_acceleration_voltage, float wanted_pixel_size);
-    float ReturnCriticalDose(float spatial_frequency);
-    float ReturnDoseFilter(float dose_at_end_of_frame, float critical_dose);
-    float ReturnCummulativeDoseFilter(float dose_at_start_of_exposure, float dose_at_end_of_exosure, float critical_dose);
+    float ReturnCriticalDose(float spatial_frequency) const;
+    float ReturnDoseFilter(float dose_at_end_of_frame, float critical_dose) const;
+    float ReturnCummulativeDoseFilter(float dose_at_start_of_exposure, float dose_at_end_of_exosure, float critical_dose) const;
     void  CalculateCummulativeDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish);
 
     void CalculateDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish);
+
+    void ReturnCriticalDose(std::size_t n, float* output, float const* spatial_frequency) const;
+    void ReturnDoseFilter(std::size_t n, float* output, float dose_at_end_of_frame, float const* critical_dose) const;
 };
 
-inline float ElectronDose::ReturnCriticalDose(float spatial_frequency) {
+inline float ElectronDose::ReturnCriticalDose(float spatial_frequency) const {
     return (critical_dose_a * powf(spatial_frequency, reduced_critical_dose_b) + critical_dose_c) * voltage_scaling_factor;
 }
 
-inline float ElectronDose::ReturnDoseFilter(float dose_at_end_of_frame, float critical_dose) {
+inline float ElectronDose::ReturnDoseFilter(float dose_at_end_of_frame, float critical_dose) const {
     return expf((-0.5 * dose_at_end_of_frame) / critical_dose);
 }
 
-inline float ElectronDose::ReturnCummulativeDoseFilter(float dose_at_start_of_exposure, float dose_at_end_of_exosure, float critical_dose) {
+inline float ElectronDose::ReturnCummulativeDoseFilter(float dose_at_start_of_exposure, float dose_at_end_of_exosure, float critical_dose) const {
     // The integrated exposure. Included in particular for the matched filter.
     // Calculated on Wolfram Alpha = integrate exp[ -0.5 * (x/a) ] from x=0 to x=t
     return 2.0f * critical_dose * (exp((-0.5 * dose_at_start_of_exposure) / critical_dose) - exp((-0.5 * dose_at_end_of_exosure) / critical_dose)) / dose_at_end_of_exosure;
