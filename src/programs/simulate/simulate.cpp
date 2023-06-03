@@ -494,18 +494,18 @@ class SimulateApp : public MyApp {
 
     // Intermediate images that may be useful for diagnostics.
     void AddCommandLineOptions( );
-    bool SAVE_WATER_AND_OTHER                = false;
-    bool SAVE_PROJECTED_WATER                = false;
-    bool SAVE_PHASE_GRATING                  = false;
-    bool SAVE_PHASE_GRATING_DOSE_FILTERED    = false;
-    bool SAVE_PHASE_GRATING_PLUS_WATER       = false;
-    bool DO_CROSSHAIR                        = false;
-    bool SAVE_PROBABILITY_WAVE               = false;
-    bool SAVE_WITH_DQE                       = false;
-    bool SAVE_WITH_NORMALIZED_DOSE           = false;
-    bool SAVE_POISSON_PRE_NTF                = false;
-    bool SAVE_POISSON_WITH_NTF               = false;
-    bool ADJUST_CTF_FOR_AMPLITUDE = false;
+    bool SAVE_WATER_AND_OTHER             = false;
+    bool SAVE_PROJECTED_WATER             = false;
+    bool SAVE_PHASE_GRATING               = false;
+    bool SAVE_PHASE_GRATING_DOSE_FILTERED = false;
+    bool SAVE_PHASE_GRATING_PLUS_WATER    = false;
+    bool DO_CROSSHAIR                     = false;
+    bool SAVE_PROBABILITY_WAVE            = false;
+    bool SAVE_WITH_DQE                    = false;
+    bool SAVE_WITH_NORMALIZED_DOSE        = false;
+    bool SAVE_POISSON_PRE_NTF             = false;
+    bool SAVE_POISSON_WITH_NTF            = false;
+    bool ADJUST_CTF_FOR_AMPLITUDE         = false;
     // Add these from the command line with long option
     int   max_number_of_noise_particles                                               = 0;
     float noise_particle_radius_as_mutliple_of_particle_radius                        = 1.8;
@@ -600,10 +600,72 @@ class SimulateApp : public MyApp {
 
     // Shift the curves to the right as the values from Shang/Sigworth are distance to VDW radius (avg C/O/N/H = 1.48 A)
     // FIXME now that you are saving distances, you can also consider polar/non-polar residues separately for an "effective" distance since the curves have the same shape with a linear offset.
-    inline float return_hydration_weight(float& radius) {
+    inline float return_hydration_weight_exact(float radius) {
         return 0.5f + 0.5f * std::erff(((radius) - (HYDRATION_VALS[2] + xtra_shift * this->wanted_pixel_size)) / (sqrtf(2) * HYDRATION_VALS[5])) +
                HYDRATION_VALS[0] * expf(-powf((radius) - (HYDRATION_VALS[3] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[6], 2))) +
                HYDRATION_VALS[1] * expf(-powf((radius) - (HYDRATION_VALS[4] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[7], 2)));
+    }
+
+    inline float return_hydration_weight(float r) {
+        // We a piecewise polynomial approximation of the hydration curve to avoid evaluation
+        // of special functions which may be slow.
+        // This approximation is fitted using a smoothing spline to the hydration function
+        // for values between -3 and 7 Angstroms,
+        // with a maximal error of 0.02% and an average error of 0.01%.
+
+        // The piecewise polynomial is stored as a set of breakpoints,
+        // and coefficients for each polynomial segment stored in the
+        // local polynomial basis (x - x_b) ^ k, except for the first
+        // segment which is stored in the monomial basis x ^ k.
+
+        static constexpr float breakpoints[] = {
+                0, -3., -1.74987499, -0.49974997, 0.12531253, 0.75037504,
+                1.37543754, 2.00050005, 2.62556256, 3.25062506, 3.87568757,
+                4.50075008, 5.12581258, 5.75087509, 7.};
+
+        // clang-format off
+        static constexpr float coeffs[] = {
+             0.00000000,  0.00000000,  0.00000000,  0.00000000,
+             0.00794677, -0.00179867,  0.00792704,  0.00345571,
+             0.0266805 ,  0.02800468,  0.04068783,  0.02608020,
+            -0.00849539,  0.12806655,  0.23579637,  0.17283711,
+            -0.07293204,  0.1121361 ,  0.38593803,  0.36818589,
+            -0.07617225, -0.02462515,  0.44063785,  0.63542219,
+            -0.00615425, -0.1674624 ,  0.32057112,  0.88262495,
+             0.06539783, -0.17900276,  0.10400874,  1.01607090,
+             0.05836269, -0.05636956, -0.04311367,  1.02711698,
+            -0.0064363 ,  0.05307143, -0.04517521,  0.99239746,
+            -0.02932101,  0.04100217,  0.01362668,  0.98332347,
+            -0.00406153, -0.01398022,  0.03051708,  1.00070008,
+             0.00952563,  -0.02159634,  0.00827951, 1.01332116,
+             0.00305641, -0.00373399, -0.00755354,  1.01238491,
+             0.00000000,  0.00000000,  0.00000000,  1.00000000
+        };
+        // clang-format on
+
+        // Adjust radius by:
+        // 1) 1.48 to get to VDW shell (avg C/O/N/H = 1.48 A)
+        // 2) 0.5 * pixel_size to get to center of pixel
+        r = r - 1.48f - 0.5 * this->wanted_pixel_size;
+
+        // Compute piece index
+        std::size_t num_pieces = sizeof(breakpoints) / sizeof(breakpoints[0]) - 1;
+        std::size_t idx = 0;
+
+        for (std::size_t i = 0; i < num_pieces; ++i) {
+            idx += (r > breakpoints[i + 1]);
+        }
+
+        float b = breakpoints[idx];
+        float x = r - b;
+
+        // Compute polynomial value
+        float z = coeffs[4 * idx];
+        z = z * x + coeffs[4 * idx + 1];
+        z = z * x + coeffs[4 * idx + 2];
+        z = z * x + coeffs[4 * idx + 3];
+
+        return z;
     }
 
     // Same as above but taper to zero from 3 - 7 Ang
@@ -3211,8 +3273,8 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
                     current_weight = 1;
                 }
                 else {
-                    // cutoff weight at 10 A.
-                    if ( current_distance < 10 * 10 ) {
+                    // cutoff weight at 7 A.
+                    if ( current_distance < 7 * 7 ) {
 
                         current_distance = sqrtf(current_distance);
                         current_weight   = return_hydration_weight(current_distance);
