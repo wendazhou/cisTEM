@@ -494,17 +494,18 @@ class SimulateApp : public MyApp {
 
     // Intermediate images that may be useful for diagnostics.
     void AddCommandLineOptions( );
-    bool SAVE_WATER_AND_OTHER             = false;
-    bool SAVE_PROJECTED_WATER             = false;
-    bool SAVE_PHASE_GRATING               = false;
-    bool SAVE_PHASE_GRATING_DOSE_FILTERED = false;
-    bool SAVE_PHASE_GRATING_PLUS_WATER    = false;
-    bool DO_CROSSHAIR                     = false;
-    bool SAVE_PROBABILITY_WAVE            = false;
-    bool SAVE_WITH_DQE                    = false;
-    bool SAVE_WITH_NORMALIZED_DOSE        = false;
-    bool SAVE_POISSON_PRE_NTF             = false;
-    bool SAVE_POISSON_WITH_NTF            = false;
+    bool SAVE_WATER_AND_OTHER                = false;
+    bool SAVE_PROJECTED_WATER                = false;
+    bool SAVE_PHASE_GRATING                  = false;
+    bool SAVE_PHASE_GRATING_DOSE_FILTERED    = false;
+    bool SAVE_PHASE_GRATING_PLUS_WATER       = false;
+    bool DO_CROSSHAIR                        = false;
+    bool SAVE_PROBABILITY_WAVE               = false;
+    bool SAVE_WITH_DQE                       = false;
+    bool SAVE_WITH_NORMALIZED_DOSE           = false;
+    bool SAVE_POISSON_PRE_NTF                = false;
+    bool SAVE_POISSON_WITH_NTF               = false;
+    bool ADJUST_CTF_FOR_AMPLITUDE = false;
     // Add these from the command line with long option
     int   max_number_of_noise_particles                                               = 0;
     float noise_particle_radius_as_mutliple_of_particle_radius                        = 1.8;
@@ -600,17 +601,17 @@ class SimulateApp : public MyApp {
     // Shift the curves to the right as the values from Shang/Sigworth are distance to VDW radius (avg C/O/N/H = 1.48 A)
     // FIXME now that you are saving distances, you can also consider polar/non-polar residues separately for an "effective" distance since the curves have the same shape with a linear offset.
     inline float return_hydration_weight(float& radius) {
-        return 0.5f + 0.5f * std::erff(((radius ) - (HYDRATION_VALS[2] + xtra_shift * this->wanted_pixel_size)) / (sqrtf(2) * HYDRATION_VALS[5])) +
-               HYDRATION_VALS[0] * expf(-powf((radius ) - (HYDRATION_VALS[3] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[6], 2))) +
-               HYDRATION_VALS[1] * expf(-powf((radius ) - (HYDRATION_VALS[4] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[7], 2)));
+        return 0.5f + 0.5f * std::erff(((radius) - (HYDRATION_VALS[2] + xtra_shift * this->wanted_pixel_size)) / (sqrtf(2) * HYDRATION_VALS[5])) +
+               HYDRATION_VALS[0] * expf(-powf((radius) - (HYDRATION_VALS[3] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[6], 2))) +
+               HYDRATION_VALS[1] * expf(-powf((radius) - (HYDRATION_VALS[4] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[7], 2)));
     }
 
     // Same as above but taper to zero from 3 - 7 Ang
     inline float return_hydration_weight_tapered(float taper_from, float& radius) {
 
-        return (0.5f + 0.5f * std::erff(((radius ) - (HYDRATION_VALS[2] + xtra_shift * this->wanted_pixel_size)) / (sqrtf(2) * HYDRATION_VALS[5])) +
-                HYDRATION_VALS[0] * expf(-powf((radius ) - (HYDRATION_VALS[3] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[6], 2))) +
-                HYDRATION_VALS[1] * expf(-powf((radius ) - (HYDRATION_VALS[4] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[7], 2)))) *
+        return (0.5f + 0.5f * std::erff(((radius) - (HYDRATION_VALS[2] + xtra_shift * this->wanted_pixel_size)) / (sqrtf(2) * HYDRATION_VALS[5])) +
+                HYDRATION_VALS[0] * expf(-powf((radius) - (HYDRATION_VALS[3] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[6], 2))) +
+                HYDRATION_VALS[1] * expf(-powf((radius) - (HYDRATION_VALS[4] + xtra_shift * this->wanted_pixel_size), 2) / (2 * powf(HYDRATION_VALS[7], 2)))) *
                (0.5f + 0.5f * cosf(radius - taper_from));
     }
 
@@ -683,6 +684,11 @@ void SimulateApp::AddCommandLineOptions( ) {
     command_line_parser.AddLongSwitch("save-poisson-pre-ntf", "Save image of water and scattering.");
     command_line_parser.AddLongSwitch("save-poisson-post-ntf", "Save image of water and scattering.");
     command_line_parser.AddLongSwitch("save-detector-wavefunction", "Save the detector wave function directly? Skip Poisson draw, default is no"); // Skip the poisson draw - must be true (this is gets over-ridden) if DO_PHASE_PLATE is true
+
+    // Due to the nature of the simulation, the amplitude contrast of the image may not match the specified value.
+    // This function will adjust the CTF parameters to better match the desired amplitude contrast,
+    // which requires running CTF estimation in the inner loop of the simulation.
+    command_line_parser.AddLongSwitch("adjust-ctf-for-amplitude-contrast", "Adjust the CTF for amplitude contrast, default is no");
 
     // Option to skip centering by mass
     command_line_parser.AddLongSwitch("skip-centering-by-mass", "Skip centering by mass");
@@ -767,6 +773,8 @@ void SimulateApp::DoInteractiveUserInput( ) {
     SAVE_POISSON_PRE_NTF             = command_line_parser.FoundSwitch("save-poisson-pre-ntf");
     SAVE_POISSON_WITH_NTF            = command_line_parser.FoundSwitch("save-poisson-post-ntf");
     DEBUG_POISSON                    = command_line_parser.Found("save-detector-wavefunction");
+
+    ADJUST_CTF_FOR_AMPLITUDE = command_line_parser.Found("adjust-ctf-for-amplitude-contrast");
 
     if ( command_line_parser.Found("j", &temp_long) ) {
         number_of_threads = (int)temp_long;
@@ -2405,7 +2413,8 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 timer.start("Propagate WaveFunc");
                 wxPrintf("Propagating wave function\n");
 
-                wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean, inelastic_mean, propagator_distance, false, tilt_to_scale_search_range);
+                wxPrintf("Estimation of contrast enabled?: %d\n", ADJUST_CTF_FOR_AMPLITUDE);
+                wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean, inelastic_mean, propagator_distance, ADJUST_CTF_FOR_AMPLITUDE, tilt_to_scale_search_range);
 
                 wxPrintf("Done with wave function propagation\n");
                 timer.lap("Propagate WaveFunc");
@@ -3108,8 +3117,8 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
     int         iSubPixZ;
     int         iSubPixLinearIndex;
     float       avg_cutoff;
-    float       current_weight    = 0.0f;
-    float       current_distance  = 0.0f;
+    float       current_weight   = 0.0f;
+    float       current_distance = 0.0f;
     int         iPot;
     const float pixel_offset = 0.5f;
 
@@ -3195,7 +3204,7 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
                     continue;
                 }
 
-                current_distance  = distance_slab->ReturnRealPixelFromPhysicalCoord(int_x - 1, int_y - 1, int_z - slabIDX_start[iSlab]);
+                current_distance = distance_slab->ReturnRealPixelFromPhysicalCoord(int_x - 1, int_y - 1, int_z - slabIDX_start[iSlab]);
 
                 // FIXME
                 if ( DO_PHASE_PLATE ) {
