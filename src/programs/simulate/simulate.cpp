@@ -2475,7 +2475,6 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 timer.start("Propagate WaveFunc");
                 wxPrintf("Propagating wave function\n");
 
-                wxPrintf("Estimation of contrast enabled?: %d\n", ADJUST_CTF_FOR_AMPLITUDE);
                 wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean, inelastic_mean, propagator_distance, ADJUST_CTF_FOR_AMPLITUDE, tilt_to_scale_search_range);
 
                 wxPrintf("Done with wave function propagation\n");
