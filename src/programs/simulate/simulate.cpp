@@ -484,6 +484,7 @@ class SimulateApp : public MyApp {
     std::string           output_star_file_name;
     long                  number_preexisting_particles;
     wxString              preexisting_particle_file_name;
+    int                   seed;
 
     float parameter_vect[17]          = {0.0f};
     float water_scaling               = 1.0f;
@@ -805,6 +806,8 @@ void SimulateApp::AddCommandLineOptions( ) {
     command_line_parser.AddLongSwitch("water-shell-only", "when adding constant background, taper off 4 Ang into the water");
     command_line_parser.AddLongSwitch("is-alpha-fold-prediction", "Is this a alpha-fold prediction? If so, convert the confidence score stored in the bfactor column to a bfactor. default is no");
 
+    command_line_parser.AddLongOption("seed", "Random number seed. If not specified, uses system entropy.", wxCMD_LINE_VAL_NUMBER, wxCMD_LINE_PARAM_OPTIONAL);
+
     //    command_line_parser.AddOption("j","","Desired number of threads. Overrides interactive user input. Is overriden by env var OMP_NUM_THREADS",wxCMD_LINE_VAL_NUMBER);
 }
 
@@ -922,6 +925,13 @@ void SimulateApp::DoInteractiveUserInput( ) {
         water_shell_only = true;
     if ( command_line_parser.Found("is-alpha-fold-prediction") )
         is_alpha_fold_prediction = true;
+
+    if (command_line_parser.Found("seed", &temp_long)) {
+        seed = (int)temp_long;
+    }
+    else {
+        seed = std::random_device{}();
+    }
 
     if ( DO_CROSSHAIR )
         DO_SOLVENT = false;
@@ -1784,7 +1794,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 // Waters are member variables of the scatteringPotential app - currentSpecimen is passed for size information.
 
                 timer.start("Seed H20");
-                water_box.SeedWaters3d( );
+                water_box.SeedWaters3d(static_cast<unsigned int>(seed));
                 timer.lap("Seed H20");
 
                 timer.start("Shake H20");

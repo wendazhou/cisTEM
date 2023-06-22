@@ -69,11 +69,12 @@ class Water {
     AtomPosArrayWrapper water_coords;
     bool                is_allocated_water_coords = false;
     int                 nThreads;
+    unsigned int        seed_;
 
     //	void set_initial_trajectories(PDB *pdb_ensemble);
 
     void Init(const PDB* current_specimen, int wanted_size_neighborhood, float wanted_pixel_size, float wanted_dose_per_frame, RotationMatrix max_rotation, float in_plane_rotation, int* padX, int* padY, int nThreads, bool pad_based_on_rotation);
-    void SeedWaters3d( );
+    void SeedWaters3d(unsigned int seed);
     void ShakeWaters3d(int number_of_threads);
     void ReturnPadding(RotationMatrix max_rotation, float in_plane_rotation, int current_thickness, int current_nX, int current_nY, int* padX, int* padY, int* padZ);
 

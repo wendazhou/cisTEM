@@ -119,7 +119,8 @@ void Water::Init(const PDB* current_specimen, int wanted_size_neighborhood, floa
     this->vol_oZ = floor(this->vol_nZ / 2);
 }
 
-void Water::SeedWaters3d( ) {
+void Water::SeedWaters3d(unsigned int seed) {
+    seed_ = seed;
 
     // Volume in Ang / (ang^3/nm^3 * nm^3/nWaters) buffer by 10%
 
@@ -169,7 +170,7 @@ void Water::SeedWaters3d( ) {
     yUpper = this->vol_nY - this->size_neighborhood;
 
     VSLStreamStatePtr stream;
-    vslNewStream(&stream, VSL_BRNG_PHILOX4X32X10, std::random_device{ }( ));
+    vslNewStream(&stream, VSL_BRNG_PHILOX4X32X10, seed);
 
     int* water_included = static_cast<int*>(mkl_malloc(sizeof(int) * incX * incY * this->vol_nZ, 64));
 
@@ -238,22 +239,23 @@ void Water::ShakeWaters3d(int number_of_threads) {
     static constexpr std::size_t block_size = 1024;
     std::size_t                  num_blocks = (number_of_waters + block_size - 1) / block_size;
 
+    VSLStreamStatePtr stream;
+    vslNewStream(&stream, VSL_BRNG_PHILOX4X32X10, seed_++);
+
 #pragma omp parallel
     {
-        VSLStreamStatePtr stream;
-
-#ifdef _OPENMP
-        vslNewStream(&stream, VSL_BRNG_PHILOX4X32X10, omp_get_thread_num( ));
-#else
-        vslNewStream(&stream, VSL_BRNG_PHILOX4X32X10, 0);
-#endif
-
         float offsets[3 * block_size];
 
 #pragma omp for
         for ( std::size_t iWaterBlock = 0; iWaterBlock < num_blocks; ++iWaterBlock ) {
 
-            vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_ICDF, stream, 3 * block_size, offsets, 0.0, random_sigma);
+            // Local stream for generating this block - ensures that result is independent of thread count
+            // Uses "block-splitting" strategy for parallel generation
+            VSLStreamStatePtr block_stream;
+            vslCopyStream(&block_stream, stream);
+            vslSkipAheadStream(block_stream, iWaterBlock * block_size);
+            vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_ICDF, block_stream, 3 * block_size, offsets, 0.0, random_sigma);
+            vslDeleteStream(&block_stream);
 
             std::size_t block_start = iWaterBlock * block_size;
             std::size_t block_end   = std::min(static_cast<std::size_t>(number_of_waters), block_start + block_size);
@@ -291,8 +293,9 @@ void Water::ShakeWaters3d(int number_of_threads) {
             }
         }
 
-        vslDeleteStream(&stream);
     }
+
+    vslDeleteStream(&stream);
 }
 
 namespace {
