@@ -105,7 +105,6 @@ class WaveFunctionPropagator {
     void SetInputWaveFunction(int size_x, int size_y);
     void SetFitParams(float pixel_size, float kv, float Cs, float AmplitudeContrast, float Size, float min_resolution, float max_resolution, float min_defocus, float max_defocus, float nThreads, float defocus_step);
 
-    __attribute__((noinline))
     float DoPropagation(Image* sum_image, Image* scattering_potential, Image* inelastic_potential,
                         int tilt_IDX, int nSlabs,
                         float* image_mean, float* inelastic_mean, float* propagator_distance, bool estimate_amplitude_contrast, float tilt_angle);
